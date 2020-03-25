@@ -1,0 +1,28 @@
+[[package]]
+category = "main"
+description = "Pythonic argument parser, that will make you smile"
+name = "docopt"
+optional = false
+python-versions = "*"
+version = "0.6.2"
+
+[[package]]
+category = "main"
+description = "a modern parsing library"
+name = "lark-parser"
+optional = false
+python-versions = "*"
+version = "0.8.2"
+
+[metadata]
+content-hash = "808d4a836d8ca70df32b44b71a2f8c8cf8ec9fcf29142b85fd6a68ead86e641f"
+python-versions = "^3.6"
+
+[metadata.files]
+docopt = [
+    {file = "docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491"},
+]
+lark-parser = [
+    {file = "lark-parser-0.8.2.tar.gz", hash = "sha256:78d1e293a1fb06f10373552af95f70832e2bfe19aebfc3b142ea6c03b2ea0597"},
+    {file = "lark_parser-0.8.2-py2.py3-none-any.whl", hash = "sha256:9d9ce33f36f749211194823a1175a76e2ccabccdfb86a196cefb967914122cd7"},
+]

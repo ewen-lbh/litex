@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "litex"
+version = "0.1.0"
+description = ""
+authors = ["ewen-lbh <ewen.lebihan7@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/ewen-lbh/litex"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.6"
+lark-parser = "^0.8.1"
+docopt = "^0.6.2"
+
+[tool.poetry.scripts]
+pychemin = "pychemin.cli:run"
