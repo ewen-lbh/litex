@@ -59,10 +59,8 @@ Note that if you try to compile a file, `use` declarations will be compiled whet
 
 ### Defining commands and environments
 
-Use python-like syntax to define commands:
-
 ```
-def torseur:
+torseur =
     tensor(_#1)({
         @array(cc)
             #2 & #5 \\
@@ -83,6 +81,44 @@ This will compile to the following:
         \end{array}
     \right}}_{\vec{x}; \vec{y}; \vec{z}}
 }
+```
+
+You can then use the defined command:
+
+```
+And so the solution becomes:
+    
+    A = torseur(A)(1.5)(3)(Z)(L)(0)(N)
+```
+
+Will compile to
+
+```latex
+\paragraph{}
+And so the solution becomes:
+\begin{eq*}
+\begin{align}
+    A &= \torseur{A}{1.5}{3}{Z}{L}{0}{N}
+\end{align}
+\end{eq*}
+```
+
+Or, with `litex --resolve-commands`:
+
+```latex
+\paragraph{}
+And so the solution becomes:
+\begin{eq*}
+\begin{align}
+    A &= \tensor[_{A}]{\left{
+        \begin{array}{cc}
+            1.5 & L \\
+            3 & 0 \\
+            Z & N
+        \end{array}
+    \right}}_{\vec{x}; \vec{y}; \vec{z}}
+\end{align}
+\end{eq*}
 ```
 
 ### Global preambles
