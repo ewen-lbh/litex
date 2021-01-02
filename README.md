@@ -92,7 +92,7 @@ You can then use the defined command:
 
 ```
 And so the solution becomes:
-    
+
     A = torseur(A)(1.5)(3)(Z)(L)(0)(N)
 ```
 
@@ -134,7 +134,7 @@ A global preamble will result in your source `.litex` file being less portable, 
 
 ## Commands
 
-Commands use the more common `()` to specify arguments. Real parentheses should be surrounded by whitespace to prevent the parser thinking `this (totally) normal text` is `\this{totally}`. Multiple arguments are put in multiple parentheses, like in $\LaTeX$. We can't just separate arguments with commas, because some arguments use commas inside (eg. `siunitx`).
+Commands use the more common `()` to specify arguments. Real parentheses should be surrounded by whitespace to prevent the parser thinking `this (totally) normal text` is `\this{totally}`. Multiple arguments are put in multiple parentheses, like in ![](http://www.texrendr.com/cgi-bin/mimetex?\LaTeX). We can't just separate arguments with commas, because some arguments use commas inside (eg. `siunitx`).
 
 
 
@@ -144,23 +144,21 @@ Commands use the more common `()` to specify arguments. Real parentheses should 
 
 | Write      | Compiled to     | See               | Notes                                                                                                                                                                                 |
 | ---------- | --------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| α          | \alpha          | $\alpha$          | Works with all greek letters                                                                                                                                                          |
-| ÷          | \div            | $\div$            |                                                                                                                                                                                       |
-| ab/cd      | a\frac{b}{c}d   | $a\frac{b}{c}d$   |                                                                                                                                                                                       |
-| e ab / cdf | e\frac{ab}{cdf} | $e\frac{ab}{cdf}$ |                                                                                                                                                                                       |
-| \*         | \cdot           | $\cdot$           | Can be set to compile to `\times` too                                                                                                                                                 |
-| \*\*       | \ast            | $\ast$            |                                                                                                                                                                                       |
-| %          | \%              | $\%$              |                                                                                                                                                                                       |
-| ×          | \times          | $\times$          |                                                                                                                                                                                       |
-| ʌ          | \land           | $\land$           |                                                                                                                                                                                       |
-| ⇒          | \implies        | $\implies$        | You                                                                                                                                                                                   |
-| ⇐          | \impliedby      | $\impliedby$      |                                                                                                                                                                                       |
-| ⇔          | \iff            | $\iff$            |                                                                                                                                                                                       |
-| →          | \to             | $\to$             | All other arrows, single or double-struck, are compiled to their $\LaTeX$ commands. You can also use ascii approximation instead of the unicode characters: -> for →, <=> for ⇔, etc. |
-| ∈          | \in             | $\in$             |                                                                                                                                                                                       |
-| ∀          | \forall         | $\forall$         |                                                                                                                                                                                       |
-| log        | \log            | $\log$            | Works with all functions (sin, tan, cot, ln, etc.)                                                                                                                                    |
-| |->        | \mapsto         | $\mapsto$         | You                                                                                                                                                                                   |
-| LaTeX      | \LaTeX          | $\LaTeX$          |                                                                                                                                                                                       |
-
-
+| α          | \alpha          | ![α](http://www.texrendr.com/cgi-bin/mimetex?\alpha)          | Works with all greek letters                                                                                                                                                          |
+| ÷          | \div            | ![÷](http://www.texrendr.com/cgi-bin/mimetex?\div)            |                                                                                                                                                                                       |
+| ab/cd      | a\frac{b}{c}d   | ![](http://www.texrendr.com/cgi-bin/mimetex?a\frac{b}{c}d)   |                                                                                                                                                                                       |
+| e ab / cdf | e\frac{ab}{cdf} | ![](http://www.texrendr.com/cgi-bin/mimetex?e\frac{ab}{cdf}) |                                                                                                                                                                                       |
+| \* or ·    | \cdot           | ![](http://www.texrendr.com/cgi-bin/mimetex?\cdot)           | Can be set to compile to `\times` too                                                                                                                                                 |
+| \*\*       | \ast            | ![](http://www.texrendr.com/cgi-bin/mimetex?\ast)            |                                                                                                                                                                                       |
+| %          | \%              | ![](http://www.texrendr.com/cgi-bin/mimetex?\%)              |                                                                                                                                                                                       |
+| ×          | \times          | ![](http://www.texrendr.com/cgi-bin/mimetex?\times)          |                                                                                                                                                                                       |
+| ʌ          | \land           | ![](http://www.texrendr.com/cgi-bin/mimetex?\land)           |                                                                                                                                                                                       |
+| ⇒          | \implies        | ![](http://www.texrendr.com/cgi-bin/mimetex?\implies)        |                                                                                                                                                                           |
+| ⇐          | \impliedby      | ![](http://www.texrendr.com/cgi-bin/mimetex?\impliedby)      |                                                                                                                                                                                       |
+| ⇔          | \iff            | ![](http://www.texrendr.com/cgi-bin/mimetex?\iff)            |                                                                                                                                                                                       |
+| →          | \to             | ![](http://www.texrendr.com/cgi-bin/mimetex?\to)             | All other arrows, single or double-struck, are compiled to their ![](http://www.texrendr.com/cgi-bin/mimetex?\LaTeX) commands. You can also use ascii approximation instead of the unicode characters: -> for →, <=> for ⇔, etc. |
+| ∈          | \in             | ![](http://www.texrendr.com/cgi-bin/mimetex?\in)             |                                                                                                                                                                                       |
+| ∀          | \forall         | ![](http://www.texrendr.com/cgi-bin/mimetex?\forall)         |                                                                                                                                                                                       |
+| log        | \log            | ![](http://www.texrendr.com/cgi-bin/mimetex?\log)            | Works with all functions (sin, tan, cot, ln, etc.)                                                                                                                                    |
+| \|->        | \mapsto         | ![](http://www.texrendr.com/cgi-bin/mimetex?\mapsto)         |                                                                                                                                                                          |
+| LaTeX      | \LaTeX          | ![](http://www.texrendr.com/cgi-bin/mimetex?\LaTeX)          |                                                                                                                                                                                       |
