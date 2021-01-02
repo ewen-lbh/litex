@@ -1,5 +1,10 @@
 # LaTeX Preprocessor
 
+***
+> I'm following readme-driven development for this project.
+> Nothing has been implemented yet, I'm still figuring out the language's design.
+***
+
 ## Global structure
 
 To eliminate the need of a stupid `\begin{document} ... \end{document}`, the structure is as follows:
