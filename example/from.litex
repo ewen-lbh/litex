@@ -1,0 +1,229 @@
+// In the preamble, since there is no text, you can use commands without adding parentheses
+// In the preamble, "A := B" means "renewcommand(A)(B)"
+// and "A = B" means "newcommand(A)(B)".
+// If #1, #2, etc appears in "B", the [argument count] is auto-calculated, no need to specify it.
+// anything between double `s is replaced with bash's output.
+// A 'input base.litex' line is added to every file. base.litex defines a lot of useful commands. Put 'nobase' at the top to remove it.
+
+// base.litex starts with the following:
+//      documentclass article
+//      author ``litex config get author``
+//      date ``date +%Y-%m-%d``
+//
+//      use = usepackage(#1)
+//      use inputenc [utf8]
+//      use hyperref [bookmarks, hidelinks, unicode]
+//      use geometry [a4paper]
+//      use amsmath
+//      use amssymb
+//      use tikz
+//      use float
+//      usetikzlibrary shapes.arrows, angles, quotes
+//      arraystretch := 1.4
+//      restylefloat table
+//
+//      operatornames =
+//          for each $ in split(#1)
+//              $ := op"$"
+//      
+//      AA = forall
+//      EE = exists
+
+// Of course, if you define a new title, author, date, documentclass, … in your document (or in any input'ed file), those in base.litex will get overwritten.
+
+title Fonctions à ensembles fonctionnels
+date 2020-12-29
+use geometry [a4paper, total={6.5in, 9.5in}]
+use lmodern
+use soul
+operatornames Im, Re, Img, Aff, cotan, const, et, ou, med, mil, sh, ch, th, id
+FEF = underset(f:A->B)(op"FEF") #1
+
+// Setup blackboard bold & calligraphic shortcuts
+for each $ in A..Z
+    $$ := bb"$"
+    c$ := c"$"
+// Redefine those
+AA := forall
+EE := exists
+
+// "..." is text
+// $prefix"..." is text in $prefix font, there's:
+// - bb: blackboard bold (\mathbb)
+// - b: bold (\mathbf)
+// - c: calligraphic (\mathcal)
+// - op: operatorname (\operatorname)
+// - f: fancy ()
+// - k: fraktur ()
+
+conj = overline(#1)
+compl = ^c\!#1
+trans = ^t\!#1
+rows = multirow(#1)(*)(#2)
+colsB = multicolumn(#1)(c|)(#2)
+Bcols = multicolumn(#1)(|c)(#2)
+BcolsB = multicolumn(#1)(|c|)(#2)
+cols = multicolumn(#1)(c)(#2)
+goesto = xrightarrow[#1  ->  #2]()
+liminfty = lim_(x -> +∞)
+limminfty = lim_(x -> -∞)
+limzero = lim_(x -> 0)
+placeholder = <>
+vec := 
+    if len(#1) > 1
+        overrightarrow #1
+    else
+        vec #1
+point = (#1; #2)
+spacepoint =
+    @pmatrix
+        #1
+        #2
+        #3
+cong := equiv
+converges = goesto
+
+strictlydecreasingfunctions =
+    @tikzpicture(scale=1.75, baseline=0)
+        draw (0,-0.25ex) -- (1ex,-0.25ex)
+		draw (1ex,0) arc (0:90:1ex)
+		draw (0.75ex,0.125ex) -- (0.25ex,-0.5ex)
+
+------
+
+// If no 'maketitle()' command appears in the document, one auto-inserted here.
+
+// env(name)(opts...) ... end() can be used if you don't want nesting.
+
+env(abstract)
+
+La notation  cD(A, B)  désignant l'ensemble des fonctions
+
+end()
+
+=== Définitions
+
+--- Définition de l'ensemble des FEF
+
+On défini dès lors un nouvel ensemble  YY  :
+
+    YY := cF(A × B, c"P"(cF(A, B)))
+
+// bare indented block (as above): becomes:
+// - \begin{align}...\end{align} with multiple lines ("&" character inserted at the centermost relation character when not in the line)
+// - \[...\] (display math) with a single line.
+// also, line breaks ("\\") are auto-inserted.
+
+
+Où:
+
+-  cF  désigne l'ensemble des fonctions de type  A -> B  . Pour la définition formelle de  cF  , cf. §format_def_F
+-  cP(A)  l'ensemble des parties de  A  .
+
+
+
+On a bien  {cF, cC, cD} subset YY
+
+--- Un conflit de notations: l'exposant
+
+Cette perspective de  cD^n  ou cC^n  comme de simples fonctions
+On devrait avoir:
+
+    AA n in NN, cD^n = bigcirc_(i=0)^n cD
+
+Dès lors, par souci de clarté, contrairement à la notation traditionnelle, bf(   cD_n  désignera l'ensemble des fonctions  n  fois dérivables, et  cD^n  la fonction  cD    n  fois composée avec elle même).
+On fera 
+
+--- Définition formelle de  cF      § formal_def_F
+
+// § thingy: short for \label or \ref
+//    in header or alone on a line: becomes \label{thingy}
+//    everywhere else: becomes \ref{thingy}, except when followed by a non-word character.
+
+L'ensemble  cF  est particulier: emph(il est nécéssaire que  cF  soit définie pour définir  YY  même.)
+
+De ce fait, la définition de  cF  nécéssite une définition 
+
+    cF := (A, B) |-> { f in "univers", f:A->B }
+
+
+
+// Three consecutive blank lines means 'new paragraph'.
+// paragraph() is inserted automatically:
+// - after three blank lines
+// - after a new section, subsection, subsubsection,...
+
+On a, pour tout élément  F in YY  :
+
+-  F  est d'arité 2 (i.e.  F  prend deux arguments)
+-  F  est à valeur d'ensembles
+
+// Like markdown, the above is a shortcut for:
+// @itemize
+//      item  F  est d'arité ...
+//      item  F  est à valeur ...
+
+On en déduit que emph(tout élément de  YY  possède la même arité et renvoie des valeurs de nature ensembliste).
+
+
+
+Il est donc possible d'étendre canoniquement et sans ambiguïté les opérateurs ensemblistes aux FEF.
+On a donc:
+
+    AA square in { cup, cap, \, Delta }, AA (F, G) in YY², F square G := (A, B) |-> F(A, B) square G(A, B)
+    AA F in YY, compl(F) := (A, B) |-> compl(F(A, B))
+    AA F in YY, F^** := F \ (A, B) |-> { x |-> 0_A }
+
+
+
+On précise pour (2) que l'“univers” des FEF (c'est-à-dire tel que le complémentaire de l'univers est  Ø  ) est  cF  : On a bien  compl(cF) = Ø  , l'ensemble des fonctions de  A  dans  B  qui ne sont pas des fonctions de  A  dans  B  est vide. De ce fait, on a:
+
+    AA F in YY, compl(F) := cF \ F
+
+On précise pour (3) que  0_A  représente l'élément neutre du magma unitaire^(i.e.  A  possède un élément neutre pour  + )  (A, +)  . Cette définition a donc un sens si et seulement si  (A, +)  est un magma unitaire.
+
+
+
+Cette extension de notation permettra notamment de définir la FEF des bijections de manière très succinte (cf.§def_FEF_bijections)
+
+--- Notation succinte pour définir des FEF
+
+On note, pour tout  F in YY  et pour toute proposition  P  convenablement définie:
+
+    FEF(P(f, A, B)) := (A, B) |-> { f in B^A, P(f, A, B) }
+
+Cette notation définit un opérateur similaire à  lim  qui est exprimable en tant que fonction, en effet, on a  op"FEF" in cF(B^A × A × B × cF(B^A, A, B), YY)
+
+~~~ Exemple: Définition de la FEF des paires
+
+    evenfunctions := FEF(f ° (-id_A)) = (A, B) |-> { f in B^A, f ° (-id) = f }
+
+// A ° B: when surrounded by spaces, it becomes \circ
+// 118°, 20 °C: when not surrounded by spaces on both sides, it stays °
+
+--- Définition de quelques FEF
+
+~~~ Dérivabilité, continuité
+
+Soit  n in NN  . Soit  u in -NN^**  .
+
+    cD_n := FEF(( AA a in A, lim_(epsilon -> 0) f(a+epsilon)-f(a) / epsilon in RR ))   §def_cD_n // equation references: define with three spaces, §, a name at the end of a line in math mode, reference exactly like you would with regular labels. (thus names need to be unique)
+    cD_u := FEF(( EE F in B^A, F' = f ))
+    cC_n := FEF(( AA a in A, lim_(epsilon -> a) f(epsilon) = a ))
+
+Dans §def_cD_n, la condition sur la limite implique également que la limite doit exister.
+
+~~~ Monotonie
+
+
+§ def_FEF_bijections
+
+La surchage de la notation d'intersection permet de définir facilement  bijections  à partir de  injections  et  surjections  :
+
+    bijections := injections cap surjections
+
+C'est enfait la définition même du quantificateur  EE!  qui intervient dans cette facilité de définition.
+
+=== Analyse
+
+// A newpage() tableofcontents() is inserted at the end if no tableofcontents() is present in the document
