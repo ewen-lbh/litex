@@ -136,7 +136,16 @@ A global preamble will result in your source `.litex` file being less portable, 
 
 Commands use the more common `()` to specify arguments. Real parentheses should be surrounded by whitespace to prevent the parser thinking `this (totally) normal text` is `\this{totally}`. Multiple arguments are put in multiple parentheses, like in ![](http://www.texrendr.com/cgi-bin/mimetex?\LaTeX). We can't just separate arguments with commas, because some arguments use commas inside (eg. `siunitx`).
 
+For a niladic command (i.e. that takes no arguments), you can omit the parentheses. Any name that is not a defined command gets interpreted as math letters.
+But since LaTeX has _a lot_ of commands, you might type a command without noticing, when you actually want regular text. We don't want that. So this relaxed syntax does not apply to text mode, only to math mode, _except for some exceptions_: in those cases, the command can be thought of more as a keyword than a "function". Don't worry. They aren't aplenty, and wouldn't appear in a sentence.
 
+Commands can have non-alphanumeric names, if you want to redefine `*` to look like × instead of · , use `* := cdot()`
+
+### Keywords: Commands that can be called without parentheses, even in text mode.
+
+| Keyword | Definition (when empty, means that it gets converted to LaTeX as-is (with the `\` added, of course)
+|---------|-----------
+| newpage | 
 
 ## Transformations
 
