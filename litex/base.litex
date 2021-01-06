@@ -70,6 +70,7 @@
 		expand c"X" to mathcal(X)
 		expand k"X" to mathfrak(X)
 		expand f"X" to mathfrak(X)
+		expand op"X" to operatorname(X)
 		expand "X" to text(X)
 		
 
