@@ -4,26 +4,29 @@
 @PREPROCESSOR!
 	remq In the processor, U thru Z means "anything non-space with one or more characters"
 	remq and A thru E means "any non-space with exactly one character"
-	remq and F thru L means "any non-newline character"
+	remq and F thru L means "one or more any non-newline character"
 	remq and N means "newline", T means "tab character"
-	remq and 
+	remq the preamble section is executed (i.e. the source code is transformed), then the resulting source code is executed on the document part.
 	in preamble
 		expandline X := Y to def(X)(Y) ignoring whitespace (at least 1)
 		expandline X = Y to providecommand(X)(Y) ignoring whitespace (at least 1)
+		upon matching line U F
+			if U doesn't contain any T
+				expand to U(F)
 	in document
-		expandline === X to section(X)
-		expandline --- X to subsection(X)
-		expandline ~~~ X to subsubsection(X)
-		expandline paragraph X to paragraph(X)
+		expandline === F to section(F)
+		expandline --- F to subsection(F)
+		expandline ~~~ F to subsubsection(F)
+		expandline paragraph F to paragraph(F)
 		if --markdown-headers
-			expandline # X to section(X)
-			expandline ## X to section(X)
-			expandline ### X to section(X)
+			expandline # F to section(F)
+			expandline ## F to section(F)
+			expandline ### F to section(F)
 		remq replace ... with ... is a low-level version of 'expand' which works for multiple lines, but is applied on the whole text, not line-per-line
 		remq It only works in "in document" and "in preamble" context specifiers.
-		replace XNNNY with XNparagraph()NY
-		expandline section(X) §Y to section(X) label(Y) ignoring whitespace (at least 1)
-		remq expand A to B is like expandline X A Y to X B Y
+		replace FNNNG with FNNparagraph()NG
+		expandline section(F) §Y to section(F) label(Y) ignoring whitespace (at least 1)
+		remq expand A to B is like expandline F A G to F B G
 		expand **F** to bf(F)
 		expand __F__ to underscore(F)
 		expand ~~F~~ to sout(F)
@@ -32,9 +35,9 @@
 		remq Not sure if I put this on the preprocessor or in the parser's grammar itself
 		expand X  Y  Z to X \(Y\) Z
 		expand   Y  Z to \(Y\) Z
-		replace XNTNYNNZ with XNN\[Y\]NNZ
+		replace FNTNGNNH with FNN\[G\]NNH
 	in text
-	  upon matching §X
+		upon matching §X
 			define R as lookup reference to X
 			if reference type of R is text
 				expand to ref(X)
@@ -87,7 +90,7 @@ usetikzlibrary shapes.arrows, angles, quotes
 arraystretch := 1.4
 restylefloat table
 
-operatornames =
+operatornames :=
 	for each $ in split(#1)
 		$ := op"$"
 
