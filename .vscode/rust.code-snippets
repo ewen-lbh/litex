@@ -1,0 +1,10 @@
+{
+	"group": {
+		"prefix": "groupparser",
+		"body": [
+			"else if let Ok((tail, expr)) = surrounded(\"$1\", \"$2\", ${3:true})(input) {",
+			"\tOk((tail, Group::$4(expr)))",
+			"}"
+		]
+	}
+}

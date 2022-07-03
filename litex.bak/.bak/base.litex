@@ -1,0 +1,110 @@
+-- Base definitions for litex files
+-- Included with every file, except if --barebones is used when compiling.
+
+@PREPROCESSOR!
+	remq In the processor, U thru Z means "anything non-space with one or more characters"
+	remq and A thru E means "any non-space with exactly one character"
+	remq and F thru L means "one or more any non-newline character"
+	remq and N means "newline", T means "tab character"
+	remq the preamble section is executed (i.e. the source code is transformed), then the resulting source code is executed on the document part.
+	in preamble
+		expandline X := Y to def(X)(Y) ignoring whitespace (at least 1)
+		expandline X = Y to providecommand(X)(Y) ignoring whitespace (at least 1)
+		upon matching line U F
+			if U doesn't contain any T
+				expand to U(F)
+	in document
+		expandline === F to section(F)
+		expandline --- F to subsection(F)
+		expandline ~~~ F to subsubsection(F)
+		expandline paragraph F to paragraph(F)
+		if --markdown-headers
+			expandline # F to section(F)
+			expandline ## F to section(F)
+			expandline ### F to section(F)
+		remq replace ... with ... is a low-level version of 'expand' which works for multiple lines, but is applied on the whole text, not line-per-line
+		remq It only works in "in document" and "in preamble" context specifiers.
+		replace FNNNG with FNNparagraph()NG
+		expandline section(F) §Y to section(F) label(Y) ignoring whitespace (at least 1)
+		remq expand A to B is like expandline F A G to F B G
+		expand **F** to bf(F)
+		expand __F__ to underscore(F)
+		expand ~~F~~ to sout(F)
+		expand *F* to emph(F)
+		expand _F_ to emph(F)
+		remq Not sure if I put this on the preprocessor or in the parser's grammar itself
+		expand X  Y  Z to X \(Y\) Z
+		expand   Y  Z to \(Y\) Z
+		replace FNTNGNNH with FNN\[G\]NNH
+	in text
+		upon matching §X
+			define R as lookup reference to X
+			if reference type of R is text
+				expand to ref(X)
+			else, if reference type of R is math
+				expand to eqref(X)
+			else
+				PANIC!
+	in display math
+		expandline X   §Y to X label(Y)
+	in any math
+		expand A. to dot(A)
+		expand A.. to ddot(A)
+		expand A:. to dot(ddot(A))
+		expand A:: to ddot(ddot(A))
+		remq I'll stop there.
+		expand A-> Y to X vec(A) Y
+		expand (AB)-> Y to X vec(AB) Y
+		
+		upon match X * Y:
+			if --asterix is one of dot, dotoperator, dot operator, cdot, center dot
+				expand to X · Y
+			else, if --asterix is one of cross, cross product, times
+				expand to X × Y
+			else, if --asterix is one of asterix, star
+				expand to X * Y
+		
+		expand bb"X" to mathbb(X)
+		expand b"X" to mathb(X)
+		expand r"X" to mathrm(X)
+		expand c"X" to mathcal(X)
+		expand k"X" to mathfrak(X)
+		expand f"X" to mathfrak(X)
+		expand op"X" to operatorname(X)
+		expand "X" to text(X)
+		
+
+documentclass article
+author ``litex config get author``
+date ``date +%Y-%m-%d``
+
+use = usepackage(#1)
+use inputenc [utf8]
+use hyperref [bookmarks, hidelinks, unicode]
+use geometry [a4paper]
+use amsmath
+use amssymb
+use tikz
+use float
+use ulem [normalem]
+usetikzlibrary shapes.arrows, angles, quotes
+arraystretch := 1.4
+restylefloat table
+
+operatornames :=
+	for each $ in split(#1)
+		$ := op"$"
+
+AA := forall
+EE := exists
+vec := 
+	if len(#1) > 1
+		if #1 == i
+			vec(imath)
+		else, if #1 == j
+			vec(jmath)
+		else
+			vec(#1)
+	else
+		return overrightarrow(#1)
+
