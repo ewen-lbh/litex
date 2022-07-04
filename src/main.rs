@@ -11,6 +11,20 @@ use nom::error::{Error, ErrorKind, ParseError};
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::{Err, IResult};
 
+// TODO custom derive macro to implement enum for PascalCase names as \camelCase (e.g. units)
+trait EmitLatex {
+    fn emit(&self) -> String;
+}
+
+trait EmitLatexHasParens {
+    ///! should render (...) as ...
+    fn emit_throw_parens(&self) -> String;
+    ///! should render (...) as {...}
+    fn emit_unwrap_parens(&self) -> String;
+    ///! should render (...) as \left(...\right)
+    fn emit_keep_parens(&self) -> String;
+}
+
 #[derive(Debug, PartialEq)]
 enum Expression {
     Q(Box<Quantification>),
@@ -24,6 +38,48 @@ struct Quantification {
     mode: QuantificationMode,
     decorations: Decorations,
     expression: Expression,
+}
+
+impl EmitLatex for Quantification {
+    fn emit(&self) -> String {
+        format!(
+            "{}{},\\ {}",
+            self.mode.emit(),
+            self.decorations.emit(),
+            self.expression.emit_keep_parens()
+        )
+    }
+}
+
+impl EmitLatex for QuantificationMode {
+    fn emit(&self) -> String {
+        match *self {
+            Self::Existential => "\\exists",
+            Self::UniquelyExistential => "\\exists!",
+            Self::Universal => "\\forall",
+        }
+        .into()
+    }
+}
+
+impl EmitLatex for Decorations {
+    fn emit(&self) -> String {
+        let mut latex = String::new();
+        if let Some(sub_expr) = self.sub {
+            latex.push(format!("_{}", sub_expr.emit_unwrap_parens()).into());
+        }
+        if let Some(sup_expr) = self.sup {
+            latex.push(format!("^{}", sup_expr.emit_unwrap_parens()).into());
+        }
+        // TODO requires storing the atom/operator/whatever being decorated, thus it shouldn't be decorations(...) but a parser combinator, decorated(...).
+        // if let Some(under_expr) = self.under {
+        //     latex = format!("\\undertext{{{}}}", under_expr.emit_throw_parens())
+        // }
+        // if let Some(over_expr) = self.over {
+
+        // }
+        latex
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,6 +105,34 @@ enum Atom {
     BareOperator(BinaryOperator),
     Text(Text),
     Group(Group),
+}
+
+impl EmitLatexHasParens for Atom {
+    fn emit_keep_parens(&self) -> String {
+        match *self {
+            Atom::Group(Group::Parenthesized(expr)) => {
+                format!("\\left({}\\right)", expr.emit_keep_parens())
+            }
+            _ => todo!(),
+        }
+        .into()
+    }
+
+    fn emit_throw_parens(&self) -> String {
+        match *self {
+            Atom::Group(Group::Parenthesized(expr)) => expr.emit_keep_parens(),
+            _ => todo!(),
+        }
+        .into()
+    }
+
+    fn emit_unwrap_parens(&self) -> String {
+        match *self {
+            Atom::Group(Group::Parenthesized(expr)) => format!("{{{}}}", expr.emit_keep_parens()),
+            _ => todo!(),
+        }
+        .into()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -103,6 +187,56 @@ enum Group {
 struct Quantity {
     value: Number,
     unit: Box<Unit>,
+}
+
+impl EmitLatex for Quantity {
+    fn emit(&self) -> String {
+        format!(r#"\SI{}{}"#, self.value, self.unit.emit())
+    }
+}
+
+impl EmitLatex for Unit {
+    fn emit(&self) -> String {
+        match *self {
+            Self::Fundamental(u) => u.emit(),
+            Self::Prefixed(prefix, base) => prefix.emit() + &base.emit(),
+            Self::Power(base, pow) => format!("{}^{}", base.emit(), pow.emit_unwrap_parens()),
+            Self::Product(a, b) => a.emit() + &b.emit(),
+            Self::Ratio(a, b) => format!("{}\\per{}", a.emit(), b.emit()),
+        }
+    }
+}
+
+impl EmitLatex for FundamentalUnit {
+    fn emit(&self) -> String {
+        match *self {
+            Self::Ampere => "\\ampere",
+            Self::Atmosphere => "\\atm",
+            Self::Bar => "\\bar",
+            Self::CelsisusDegree => "\\degreeCelsius",
+            Self::Degree => "\\degree",
+            Self::ElectronVolt => "\\electronvolt",
+            Self::Farad => "\\farad",
+            Self::FarenheitDegree => "\\degreeFarenheit",
+            Self::Gram => "\\gram",
+            _ => todo!(),
+        }
+        .into()
+    }
+}
+
+impl EmitLatex for UnitPrefix {
+    fn emit(&self) -> String {
+        match *self {
+            Self::Centi => "\\centi",
+            Self::Deca => "\\deca",
+            Self::Deci => "\\deci",
+            Self::Giga => "\\giga",
+            Self::Hecto => "\\hecto",
+            _ => todo!(),
+        }
+        .into()
+    }
 }
 
 #[derive(Debug, PartialEq)]
