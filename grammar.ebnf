@@ -3,14 +3,14 @@
 // concatenation with ~ implies required whitespace
 
 expression ::= quantification | relationship | atom | operation
-quantification ::= (quantifier (relationship | atom) )+.","~expression
+quantification ::= quantifier~expression
 quantifier ::= ("∀" | "AA" | "forall" | ("∃" | "EE" | "exists")."!"?).decorations
 relationship ::= expression~relation~expression
-operation ::= atom~binary_operator~atom | prefix_operator.atom | atom.postfix_operator | big_operator.decorations expression
+operation ::= expression~binary_operator~expression | prefix_operator.expression | atom.postfix_operator | big_operator.decorations expression
 atom ::= group | (name | quantity | "+" | "-" | text).decorations 
 group ::= "{" expression "}" | "(" expression ")" | "[" expression "]" | "<".expression.">" | "|" expression "|" | "||" expression "||" | "[|" expression "|]" 
 big_operator ::= "Sum" | "sum" | "Product" | "product" | "Coproduct" | "Union" | "Intersection" | "Directsum" | "Oplus" | "∑"
-binary_operator ::= ([+×*·⊕°] | "inter" | "union" | "_|_" | "bot" | "perp" | "orthog").decorations
+binary_operator ::= ([+×*·⊕°,] | "inter" | "union" | "_|_" | "bot" | "perp" | "orthog").decorations
 prefix_operator ::= "+" | "-" | "^c" | "^t"
 postfix_operator ::= "!" | "->" | "^T" | "^_|_" | "^bot" | "^orthog" | "^perp"
 relation ::= ([~=←→↑↓≡≈≅><≥≤⇒⇐⇔⊂⊃∈] | "->" | "|->" | "<-|" | "<-" | "==>" | "<==" | ">=" | "<=" | "<=>" | "<==def==>" | "subset" | "superset" | "in" | "element" "of"? | "includes" | "included" "in"? | "--".atom."->").decorations

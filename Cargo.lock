@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "maplit",
  "nom",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -37,3 +38,9 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e8820f5d777f6224dc4be3632222971ac30164d4a258d595640799554ebfd99"

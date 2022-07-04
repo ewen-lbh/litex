@@ -1,37 +1,38 @@
+use nom::number::complete::float;
 use std::collections::HashMap;
-use std::fmt::Binary;
+use unicode_segmentation::UnicodeSegmentation;
 #[macro_use]
 extern crate maplit;
-use nom::branch::{alt, Alt};
-use nom::bytes::complete::{tag, tag_no_case};
-use nom::character::complete::char;
+use nom::branch::alt;
+use nom::bytes::complete::tag;
+use nom::character::complete::{alpha1, char, digit1};
 use nom::combinator::opt;
 use nom::error::{Error, ErrorKind, ParseError};
 use nom::sequence::{delimited, preceded, terminated, tuple};
-use nom::{number, Err, IResult, Parser};
+use nom::{Err, IResult};
 
 #[derive(Debug, PartialEq)]
-enum Expression<'a> {
-    Q(Box<Quantification<'a>>),
-    R(Box<Relationship<'a>>),
-    A(Box<Atom<'a>>),
-    O(Box<Operation<'a>>),
+enum Expression {
+    Q(Box<Quantification>),
+    R(Box<Relationship>),
+    A(Box<Atom>),
+    O(Box<Operation>),
 }
 
 #[derive(Debug, PartialEq)]
-struct Quantification<'a> {
+struct Quantification {
     mode: QuantificationMode,
-    decorations: Decorations<'a>,
-    bound: Expression<'a>,
-    quantified: Expression<'a>,
+    decorations: Decorations,
+    expression: Expression,
 }
 
 #[derive(Debug, PartialEq)]
-struct Relationship<'a> {
-    lhs: Expression<'a>,
-    relation: &'a Relation,
+struct Relationship {
+    lhs: Expression,
+    relation: Relation,
+    relation_decorations: Option<Decorations>,
     negated: bool,
-    rhs: Expression<'a>,
+    rhs: Expression,
 }
 
 #[derive(Debug, PartialEq)]
@@ -41,13 +42,13 @@ enum Number {
 }
 
 #[derive(Debug, PartialEq)]
-enum Atom<'a> {
+enum Atom {
     Name(String),
     Number(Number),
-    Quantity(Quantity<'a>),
+    Quantity(Quantity),
     BareOperator(BinaryOperator),
     Text(Text),
-    Group(Group<'a>),
+    Group(Group),
 }
 
 #[derive(Debug, PartialEq)]
@@ -66,48 +67,49 @@ enum TextFont {
     Normal,
     Italic,
     Script,
+    MathOperator,
 }
 #[derive(Debug, PartialEq)]
-enum Group<'a> {
+enum Group {
     // { expr }
-    Braced(Expression<'a>),
+    Braced(Expression),
     // ( expr )
-    Parenthesized(Expression<'a>),
+    Parenthesized(Expression),
     // [ expr ]
-    Bracketed(Expression<'a>),
+    Bracketed(Expression),
     // ]expr[
-    OpenRange(Expression<'a>),
+    OpenRange(Expression),
     // ]expr]
-    LeftOpenRange(Expression<'a>),
+    LeftOpenRange(Expression),
     // [expr[
-    RightOpenRange(Expression<'a>),
+    RightOpenRange(Expression),
     // |]expr[|
-    OpenIntegerRange(Expression<'a>),
+    OpenIntegerRange(Expression),
     // |]expr|]
-    LeftOpenIntegerRange(Expression<'a>),
+    LeftOpenIntegerRange(Expression),
     // [|expr[|
-    RightOpenIntegerRange(Expression<'a>),
+    RightOpenIntegerRange(Expression),
     // [| expr |]
-    WhiteBracketed(Expression<'a>),
+    WhiteBracketed(Expression),
     // | expr |
-    AbsoluteValue(Expression<'a>),
+    AbsoluteValue(Expression),
     // || expr ||
-    Norm(Expression<'a>),
+    Norm(Expression),
     // <expr>
-    AngleBracketed(Expression<'a>),
+    AngleBracketed(Expression),
 }
 
 #[derive(Debug, PartialEq)]
-struct Quantity<'a> {
+struct Quantity {
     value: Number,
-    unit: Box<Unit<'a>>,
+    unit: Box<Unit>,
 }
 
 #[derive(Debug, PartialEq)]
-enum Unit<'a> {
-    Product(Box<Unit<'a>>, Box<Unit<'a>>),
-    Ratio(Box<Unit<'a>>, Box<Unit<'a>>),
-    Power(Box<Unit<'a>>, Atom<'a>),
+enum Unit {
+    Product(Box<Unit>, Box<Unit>),
+    Ratio(Box<Unit>, Box<Unit>),
+    Power(Box<Unit>, Atom),
     Prefixed(UnitPrefix, FundamentalUnit),
     Fundamental(FundamentalUnit),
 }
@@ -156,11 +158,11 @@ enum FundamentalUnit {
 }
 
 #[derive(Debug, PartialEq)]
-struct Operation<'a> {
-    lhs: Option<Expression<'a>>,
+struct Operation {
+    lhs: Option<Expression>,
     operator: Operator,
-    operator_decorations: Decorations<'a>,
-    rhs: Option<Expression<'a>>,
+    operator_decorations: Decorations,
+    rhs: Option<Expression>,
 }
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum QuantificationMode {
@@ -170,11 +172,11 @@ enum QuantificationMode {
 }
 
 #[derive(Debug, PartialEq)]
-struct Decorations<'a> {
-    sub: Option<Atom<'a>>,
-    sup: Option<Atom<'a>>,
-    under: Option<Atom<'a>>,
-    over: Option<Atom<'a>>,
+struct Decorations {
+    sub: Option<Atom>,
+    sup: Option<Atom>,
+    under: Option<Atom>,
+    over: Option<Atom>,
 }
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum Relation {
@@ -259,16 +261,304 @@ enum BigOperator {
     Supremum,
 }
 
-// fn expression(input: &str) -> IResult<&str, Expression> {
-//     let (tail, parsed) = alt(quantification, alt(relationship, alt(atom, operation)))(input)?;
-//     match parsed {
+fn expression(input: &str) -> IResult<&str, Expression> {
+    if let Ok((tail, q)) = quantification(input) {
+        Ok((tail, Expression::Q(Box::new(q))))
+    } else if let Ok((tail, r)) = relationship(input) {
+        Ok((tail, Expression::R(Box::new(r))))
+    } else if let Ok((tail, o)) = operation(input) {
+        Ok((tail, Expression::O(Box::new(o))))
+    } else if let Ok((tail, a)) = atom(input) {
+        Ok((tail, Expression::A(Box::new(a))))
+    } else {
+        Err(Err::Error(Error {
+            code: ErrorKind::Alt,
+            input: "",
+        }))
+    }
+}
 
-//     }
-// }
+fn quantification(input: &str) -> IResult<&str, Quantification> {
+    let (tail, (quantifier, decos, _, expr)) =
+        tuple((quantifier, decorations, whitespace, expression))(input)?;
+    Ok((
+        tail,
+        Quantification {
+            decorations: decos,
+            expression: expr,
+            mode: quantifier,
+        },
+    ))
+}
 
-// fn quantification(input: &str) -> IResult<&str, Quantification> {
+fn quantifier(input: &str) -> IResult<&str, QuantificationMode> {
+    if let Ok((tail, _)) = alt::<_, _, Error<_>, _>((tag("∀"), tag("AA"), tag("forall")))(input) {
+        Ok((tail, QuantificationMode::Universal))
+    } else if let Ok((tail, _)) =
+        alt::<_, _, Error<_>, _>((tag("∃"), tag("EE"), tag("exists")))(input)
+    {
+        if let Ok((tail, _)) = tag::<_, _, Error<_>>("!")(tail) {
+            Ok((tail, QuantificationMode::UniquelyExistential))
+        } else {
+            Ok((tail, QuantificationMode::Existential))
+        }
+    } else {
+        Err(Err::Error(Error {
+            code: ErrorKind::Alt,
+            input: "",
+        }))
+    }
+}
 
-// }
+fn relationship(input: &str) -> IResult<&str, Relationship> {
+    let (tail, (lhs, _, neg, rel, deco, _, rhs)) = tuple((
+        expression,
+        opt(whitespace),
+        opt(alt((tag("not"), tag("!")))),
+        relation,
+        opt(decorations),
+        opt(whitespace),
+        expression,
+    ))(input)?;
+
+    Ok((
+        tail,
+        Relationship {
+            lhs: lhs,
+            negated: match neg {
+                Some(_) => true,
+                None => false,
+            },
+            relation: rel,
+            relation_decorations: deco,
+            rhs: rhs,
+        },
+    ))
+}
+
+#[test]
+fn test_relationship() {
+    assert_eq!(
+        relationship("e !in E => f in F"),
+        Ok((
+            "",
+            Relationship {
+                lhs: Expression::R(Box::new(Relationship {
+                    lhs: Expression::A(Box::new(Atom::Name("e".into()))),
+                    rhs: Expression::A(Box::new(Atom::Name("E".into()))),
+                    negated: true,
+                    relation: Relation::ElementOf,
+                    relation_decorations: None,
+                })),
+                rhs: Expression::R(Box::new(Relationship {
+                    lhs: Expression::A(Box::new(Atom::Name("f".into()))),
+                    rhs: Expression::A(Box::new(Atom::Name("F".into()))),
+                    negated: false,
+                    relation: Relation::ElementOf,
+                    relation_decorations: None,
+                })),
+                negated: false,
+                relation: Relation::Implies,
+                relation_decorations: None,
+            }
+        ))
+    )
+}
+
+fn number(input: &str) -> IResult<&str, Number> {
+    if let Ok((tail, float)) = _float_only_when_comma(input) {
+        Ok((tail, float))
+    } else if let Ok((tail, (neg, number))) = tuple((opt(char('-')), digit1::<_, Error<_>>))(input)
+    {
+        Ok((
+            tail,
+            Number::Integer(
+                number.parse::<i32>().unwrap()
+                    * match neg {
+                        Some(_) => -1,
+                        None => 1,
+                    },
+            ),
+        ))
+    } else {
+        Err(Err::Error(Error {
+            code: ErrorKind::Digit,
+            input: "",
+        }))
+    }
+}
+
+fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
+    if !input.contains('.') {
+        return Err(Err::Error(Error {
+            code: ErrorKind::Char,
+            input: "",
+        }));
+    }
+
+    let (tail, (neg, nb)) = tuple((opt(char('-')), float::<_, Error<_>>))(input)?;
+    Ok((
+        tail,
+        Number::Float(
+            nb * match neg {
+                Some(_) => -1.0,
+                None => 1.0,
+            },
+        ),
+    ))
+}
+
+fn atom(input: &str) -> IResult<&str, Atom, Error<&str>> {
+    if let Ok((tail, txt)) = text(input) {
+        Ok((tail, Atom::Text(txt)))
+    } else if let Ok((tail, name)) = alpha1::<_, Error<_>>(input) {
+        Ok((tail, Atom::Name(name.into())))
+    } else if let Ok((tail, number)) = number(input) {
+        Ok((tail, Atom::Number(number)))
+    } else if let Ok((tail, qty)) = quantity(input) {
+        Ok((tail, Atom::Quantity(qty)))
+    } else if let Ok((tail, bare_op)) = binary_operator(input) {
+        Ok((tail, Atom::BareOperator(bare_op)))
+    } else if let Ok((tail, grp)) = group(input) {
+        Ok((tail, Atom::Group(grp)))
+    } else {
+        Err(Err::Error(Error {
+            input: "",
+            code: ErrorKind::Alt,
+        }))
+    }
+}
+
+#[test]
+fn test_atom() {
+    assert_eq!(atom("alpha"), Ok(("", Atom::Name("alpha".into()))));
+    assert_eq!(atom("abc87"), Ok(("87", Atom::Name("abc".into()))));
+    assert_eq!(
+        atom("65486.848pal"),
+        Ok(("pal", Atom::Number(Number::Float(65486.848))))
+    );
+    assert_eq!(
+        atom(r#"(int_0^1 sum e in o"R") not= _|_"#),
+        Ok((
+            " not= _|_",
+            Atom::Group(Group::Parenthesized(Expression::R(Box::new(
+                Relationship {
+                    lhs: Expression::O(Box::new(Operation {
+                        lhs: None,
+                        operator: Operator::Big(BigOperator::Integral),
+                        operator_decorations: Decorations {
+                            sub: Some(Atom::Number(Number::Integer(0))),
+                            sup: Some(Atom::Number(Number::Integer(0))),
+                            under: None,
+                            over: None
+                        },
+                        rhs: Some(Expression::O(Box::new(Operation {
+                            lhs: None,
+                            operator: Operator::Big(BigOperator::Sum),
+                            operator_decorations: Decorations {
+                                sub: None,
+                                sup: None,
+                                under: None,
+                                over: None
+                            },
+                            rhs: Some(Expression::A(Box::new(Atom::Name("e".into())))),
+                        })))
+                    })),
+                    negated: false,
+                    relation: Relation::ElementOf,
+                    relation_decorations: None,
+                    rhs: Expression::A(Box::new(Atom::Text(Text {
+                        font: TextFont::BlackboardBold,
+                        content: "R".into(),
+                    })))
+                }
+            ))))
+        ))
+    );
+}
+
+fn text(input: &str) -> IResult<&str, Text> {
+    let (tail, (maybe_font, content)) = tuple((opt(text_font), quoted_string))(input)?;
+    Ok((
+        tail,
+        Text {
+            content: content,
+            font: match maybe_font {
+                Some(f) => f,
+                None => TextFont::Normal,
+            },
+        },
+    ))
+}
+
+#[test]
+fn test_text() {
+    assert_eq!(
+        text(r#"o"R \"forall\""  is the set of real numbers."#),
+        Ok((
+            "  is the set of real numbers.",
+            Text {
+                content: "R \"forall\"".into(),
+                font: TextFont::BlackboardBold,
+            }
+        ))
+    );
+    assert_eq!(
+        text(r#""""""#),
+        Ok((
+            r#""""#,
+            Text {
+                content: "".into(),
+                font: TextFont::Normal,
+            }
+        ))
+    );
+    assert_eq!(
+        text("lim_(x->"),
+        Err(Err::Error(Error {
+            code: ErrorKind::Tag,
+            input: "lim_(x->",
+        }))
+    );
+}
+
+fn quoted_string(input: &str) -> IResult<&str, String> {
+    delimited(tag("\""), _in_quotes, tag("\""))(input)
+}
+
+fn _in_quotes(input: &str) -> IResult<&str, String> {
+    let mut content = String::new();
+    let mut skip_delimiter = false;
+    for (i, ch) in input.char_indices() {
+        if ch == '\\' && !skip_delimiter {
+            skip_delimiter = true
+        } else if ch == '"' && !skip_delimiter {
+            return Ok((&input[i..], content));
+        } else {
+            content.push(ch);
+            skip_delimiter = false;
+        }
+    }
+    Err(Err::Incomplete(nom::Needed::Unknown))
+}
+
+fn text_font(input: &str) -> IResult<&str, TextFont> {
+    match_enum_variants_to_literals(
+        input,
+        hashmap! {
+            TextFont::Caligraphic => vec!["c"],
+            TextFont::Fraktur => vec!["f"],
+            TextFont::BlackboardBold => vec!["o", "bb"],
+            TextFont::Bold => vec!["b"],
+            TextFont::Sans => vec!["s"],
+            TextFont::Monospace => vec!["m", "tt"],
+            TextFont::Normal => vec!["n"],
+            TextFont::Italic => vec!["i"],
+            TextFont::Script => vec!["s"],
+            TextFont::MathOperator => vec!["op"],
+        },
+    )
+}
 
 fn group(input: &str) -> IResult<&str, Group> {
     if let Ok((tail, expr)) = surrounded(expression, "{", "}", true)(input) {
@@ -305,28 +595,39 @@ fn group(input: &str) -> IResult<&str, Group> {
     }
 }
 
-fn surrounded<'a, O, E, F>(
-    mut f: F,
+fn surrounded<'a, F: 'a, O, E: ParseError<&'a str>>(
+    f: F,
     opening: &'static str,
     closing: &'static str,
-) -> impl FnMut(&'a str) -> IResult<&'a str, O, E>
+    allow_whitespace: bool,
+) -> impl Fn(&'a str) -> IResult<&'a str, O, E>
 where
-    F: Parser<&'a str, O, E>,
+    F: Fn(&'a str) -> IResult<&'a str, O, E>,
 {
-    move |input: &'a str| delimited(tag(opening), f, tag(closing))(input)
+    move |input| delimited(tag(opening), &f, tag(closing))(input)
 }
 
-fn optional_whitespace<I: Clone, O, E: ParseError<I>, F>(
-    mut f: F,
-) -> impl FnMut(I) -> IResult<I, O, E>
-where
-    F: Parser<I, O, E>,
-{
-    move |input: I| delimited(opt(whitespace), f, opt(whitespace))(input)
+fn whitespace(input: &str) -> IResult<&str, &str> {
+    let mut tail_starts_at = 0;
+    for grapheme in input.graphemes(true) {
+        if grapheme != " " {
+            break;
+        }
+        tail_starts_at += 1;
+    }
+    if tail_starts_at == 0 {
+        Err(Err::Error(Error {
+            code: ErrorKind::NoneOf,
+            input: "",
+        }))
+    } else {
+        let (parsed, tail) = input.split_at(tail_starts_at);
+        Ok((tail, parsed))
+    }
 }
 
 fn quantity(input: &str) -> IResult<&str, Quantity> {
-    let (tail, (value, _, u)) = tuple((number::complete::be_f32, whitespace, unit))(input)?;
+    let (tail, (value, _, u)) = tuple((number, whitespace, unit))(input)?;
     Ok((
         tail,
         Quantity {
@@ -339,17 +640,20 @@ fn quantity(input: &str) -> IResult<&str, Quantity> {
 #[test]
 fn test_quantity() {
     assert_eq!(
-        quantity("352.8 µS/m^2."),
+        quantity("352.8 µS/s*m^2@"),
         Ok((
-            ".",
+            "@",
             Quantity {
                 value: Number::Float(352.8),
                 unit: Box::new(Unit::Ratio(
                     Box::new(Unit::Prefixed(UnitPrefix::Micro, FundamentalUnit::Siemens)),
-                    Box::new(Unit::Power(
-                        Box::new(Unit::Fundamental(FundamentalUnit::Meter)),
-                        Atom::Number(Number::Integer(2)),
-                    ))
+                    Box::new(Unit::Product(
+                        Box::new(Unit::Fundamental(FundamentalUnit::Second)),
+                        Box::new(Unit::Power(
+                            Box::new(Unit::Fundamental(FundamentalUnit::Meter)),
+                            Atom::Number(Number::Integer(2)),
+                        ))
+                    )),
                 ))
             }
         ))
@@ -357,14 +661,25 @@ fn test_quantity() {
 }
 
 fn unit(input: &str) -> IResult<&str, Unit> {
-    if let Ok((tail, (a, _, b))) = tuple((unit, char('*'), unit))(input) {
+    if let Ok((tail, (a, _, b))) = tuple((_unit_no_bin_op, char('*'), unit))(input) {
         Ok((tail, Unit::Product(Box::new(a), Box::new(b))))
-    } else if let Ok((tail, (a, _, b))) = tuple((unit, char('/'), unit))(input) {
+    } else if let Ok((tail, (a, _, b))) = tuple((_unit_no_bin_op, char('/'), unit))(input) {
         Ok((tail, Unit::Ratio(Box::new(a), Box::new(b))))
-    } else if let Ok((tail, (u, _, pow))) = tuple((unit, char('^'), atom))(input) {
+    } else {
+        _unit_no_bin_op(input)
+    }
+}
+
+fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
+    if let Ok((tail, (u, _, pow))) = tuple((_unit_no_op, char('^'), atom))(input) {
         Ok((tail, Unit::Power(Box::new(u), pow)))
-    } else if let Ok((tail, (prefix, fundamental))) = tuple((unit_prefix, fundamental_unit))(input)
-    {
+    } else {
+        _unit_no_op(input)
+    }
+}
+
+fn _unit_no_op(input: &str) -> IResult<&str, Unit> {
+    if let Ok((tail, (prefix, fundamental))) = tuple((unit_prefix, fundamental_unit))(input) {
         Ok((tail, Unit::Prefixed(prefix, fundamental)))
     } else if let Ok((tail, u)) = fundamental_unit(input) {
         Ok((tail, Unit::Fundamental(u)))
@@ -554,8 +869,9 @@ fn test_decorations() {
                     Relationship {
                         lhs: Expression::A(Box::new(Atom::Name("x".to_string()))),
                         rhs: Expression::A(Box::new(Atom::Number(Number::Integer(0)))),
-                        relation: &Relation::Tends,
-                        negated: false
+                        relation: Relation::Tends,
+                        negated: false,
+                        relation_decorations: None,
                     }
                 ))))),
                 sup: None,

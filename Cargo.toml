@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 maplit = "1.0.2"
 nom = "7.1.1"
+unicode-segmentation = "1.9.0"
