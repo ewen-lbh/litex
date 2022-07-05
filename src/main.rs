@@ -33,6 +33,33 @@ enum Expression {
     O(Box<Operation>),
 }
 
+impl EmitLatexHasParens for Expression {
+    fn emit_keep_parens(&self) -> String {
+        match self {
+            Expression::A(atom) => atom.emit_keep_parens(),
+            Expression::O(inner) => inner.emit(),
+            Expression::Q(inner) => inner.emit(),
+            Expression::R(inner) => inner.emit(),
+        }
+    }
+    fn emit_throw_parens(&self) -> String {
+        match self {
+            Expression::A(atom) => atom.emit_throw_parens(),
+            Expression::O(inner) => inner.emit(),
+            Expression::Q(inner) => inner.emit(),
+            Expression::R(inner) => inner.emit(),
+        }
+    }
+    fn emit_unwrap_parens(&self) -> String {
+        match self {
+            Expression::A(atom) => atom.emit_unwrap_parens(),
+            Expression::O(inner) => inner.emit(),
+            Expression::Q(inner) => inner.emit(),
+            Expression::R(inner) => inner.emit(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 struct Quantification {
     mode: QuantificationMode,
@@ -65,11 +92,11 @@ impl EmitLatex for QuantificationMode {
 impl EmitLatex for Decorations {
     fn emit(&self) -> String {
         let mut latex = String::new();
-        if let Some(sub_expr) = self.sub {
-            latex.push(format!("_{}", sub_expr.emit_unwrap_parens()).into());
+        if let Some(sub_expr) = &self.sub {
+            latex.extend(format!("_{}", sub_expr.emit_unwrap_parens()).chars());
         }
-        if let Some(sup_expr) = self.sup {
-            latex.push(format!("^{}", sup_expr.emit_unwrap_parens()).into());
+        if let Some(sup_expr) = &self.sup {
+            latex.extend(format!("^{}", sup_expr.emit_unwrap_parens()).chars());
         }
         // TODO requires storing the atom/operator/whatever being decorated, thus it shouldn't be decorations(...) but a parser combinator, decorated(...).
         // if let Some(under_expr) = self.under {
@@ -86,9 +113,22 @@ impl EmitLatex for Decorations {
 struct Relationship {
     lhs: Expression,
     relation: Relation,
-    relation_decorations: Option<Decorations>,
+    relation_decorations: Decorations,
     negated: bool,
     rhs: Expression,
+}
+
+impl EmitLatex for Relationship {
+    fn emit(&self) -> String {
+        format!(
+            "{} {}{}{} {}",
+            self.lhs.emit_keep_parens(),
+            if self.negated { "\\not" } else { "" },
+            self.relation.emit(),
+            self.relation_decorations.emit(),
+            self.rhs.emit_keep_parens()
+        )
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -109,7 +149,7 @@ enum Atom {
 
 impl EmitLatexHasParens for Atom {
     fn emit_keep_parens(&self) -> String {
-        match *self {
+        match self {
             Atom::Group(Group::Parenthesized(expr)) => {
                 format!("\\left({}\\right)", expr.emit_keep_parens())
             }
@@ -119,7 +159,7 @@ impl EmitLatexHasParens for Atom {
     }
 
     fn emit_throw_parens(&self) -> String {
-        match *self {
+        match self {
             Atom::Group(Group::Parenthesized(expr)) => expr.emit_keep_parens(),
             _ => todo!(),
         }
@@ -127,7 +167,7 @@ impl EmitLatexHasParens for Atom {
     }
 
     fn emit_unwrap_parens(&self) -> String {
-        match *self {
+        match self {
             Atom::Group(Group::Parenthesized(expr)) => format!("{{{}}}", expr.emit_keep_parens()),
             _ => todo!(),
         }
@@ -191,13 +231,22 @@ struct Quantity {
 
 impl EmitLatex for Quantity {
     fn emit(&self) -> String {
-        format!(r#"\SI{}{}"#, self.value, self.unit.emit())
+        format!(r#"\SI{{{}}}{{{}}}"#, self.value, self.unit.emit())
+    }
+}
+
+impl std::fmt::Display for Number {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Float(x) => x.fmt(f),
+            Self::Integer(x) => x.fmt(f),
+        }
     }
 }
 
 impl EmitLatex for Unit {
     fn emit(&self) -> String {
-        match *self {
+        match self {
             Self::Fundamental(u) => u.emit(),
             Self::Prefixed(prefix, base) => prefix.emit() + &base.emit(),
             Self::Power(base, pow) => format!("{}^{}", base.emit(), pow.emit_unwrap_parens()),
@@ -298,6 +347,69 @@ struct Operation {
     operator_decorations: Decorations,
     rhs: Option<Expression>,
 }
+
+macro_rules! refunwrap {
+    ($e:expr) => {
+        $e.as_ref().unwrap()
+    };
+}
+
+impl EmitLatex for Operation {
+    fn emit(&self) -> String {
+        match &self.operator {
+            Operator::Binary(_) => format!(
+                "{} {}{} {}",
+                refunwrap!(self.lhs).emit_keep_parens(),
+                self.operator.emit(),
+                self.operator_decorations.emit(),
+                refunwrap!(self.rhs).emit_keep_parens()
+            ),
+            Operator::Big(_) => format!(
+                "{}{} {}",
+                self.operator.emit(),
+                self.operator_decorations.emit(),
+                refunwrap!(self.rhs).emit_keep_parens()
+            ),
+            Operator::Prefix(_) => format!(
+                "{}{}{}",
+                self.operator.emit(),
+                self.operator_decorations.emit(),
+                refunwrap!(self.rhs).emit_keep_parens()
+            ),
+            Operator::Postfix(op) => match op {
+                PostfixOperator::VectorMarker => {
+                    match refunwrap!(self.lhs).emit_throw_parens().len() {
+                        1 => format!(
+                            "\\vec{{{}}}{}",
+                            refunwrap!(self.lhs).emit_keep_parens(),
+                            self.operator_decorations.emit()
+                        ),
+                        _ => format!(
+                            "\\overrightarrow{{{}}}{}",
+                            refunwrap!(self.lhs).emit_unwrap_parens(),
+                            self.operator_decorations.emit()
+                        ),
+                    }
+                }
+                PostfixOperator::Negation => format!(
+                    "\\bar{{{}}}{}",
+                    match refunwrap!(self.lhs).emit_throw_parens().len() {
+                        1 => refunwrap!(self.lhs).emit_keep_parens(),
+                        _ => refunwrap!(self.lhs).emit_unwrap_parens(),
+                    },
+                    self.operator_decorations.emit()
+                ),
+                _ => format!(
+                    "{}{}{}",
+                    refunwrap!(self.lhs).emit_keep_parens(),
+                    self.operator.emit(),
+                    self.operator_decorations.emit()
+                ),
+            },
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum QuantificationMode {
     Universal,
@@ -331,12 +443,46 @@ enum Relation {
     MapsTo,
 }
 
+impl EmitLatex for Relation {
+    fn emit(&self) -> String {
+        match self {
+            Self::Congruent => "\\cong",
+            Self::ElementOf => "\\in",
+            Self::Equals => "=",
+            Self::EquivalentTo => "~",
+            Self::Greater => ">",
+            Self::GreaterOrEqual => "\\geq", // TODO add \geqslanted with a config switch
+            Self::Iff => "\\iff",
+            Self::ImpliedBy => "\\impliedby",
+            Self::Implies => "\\implies",
+            Self::Less => "<",
+            Self::LessOrEqual => "\\leq",
+            Self::MapsTo => "\\mapsto",
+            Self::Subset => "\\subset",
+            Self::Superset => "\\supset",
+            Self::Tends => "\\to",
+        }
+        .to_string()
+    }
+}
+
 #[derive(Debug, PartialEq)]
 enum Operator {
     Binary(BinaryOperator),
     Prefix(PrefixOperator),
     Postfix(PostfixOperator),
     Big(BigOperator),
+}
+
+impl EmitLatex for Operator {
+    fn emit(&self) -> String {
+        match self {
+            Operator::Big(op) => op.emit(),
+            Operator::Binary(op) => op.emit(),
+            Operator::Postfix(op) => op.emit(),
+            Operator::Prefix(op) => op.emit(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -357,11 +503,44 @@ enum BinaryOperator {
     SymmetricDifference,
 }
 
+impl EmitLatex for BinaryOperator {
+    fn emit(&self) -> String {
+        match self {
+            Self::Addition => "+",
+            Self::CartesianProduct => "\\times",
+            Self::Composition => "\\circ",
+            Self::Difference => "-",
+            Self::DirectAddition => "\\oplus",
+            Self::Division => "/",
+            Self::DotProduct => "\\cdot",
+            Self::Fraction => "\\div", // just for Atom::BareOperator
+            Self::Intersection => "\\cap",
+            Self::Remainder => "\\mod",
+            Self::SetDifference => "\\setminus",
+            Self::SymmetricDifference => "\\Delta",
+            Self::Union => "\\cup",
+            Self::VectorProduct => "\\land",
+        }
+        .to_string()
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum PrefixOperator {
     Transposition,
     Complement,
     Negation,
+}
+
+impl EmitLatex for PrefixOperator {
+    fn emit(&self) -> String {
+        match self {
+            Self::Transposition => r#"\ {}^t"#,
+            Self::Complement => r#"\ {}^c"#,
+            Self::Negation => r#"\lnot"#,
+        }
+        .to_string()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -372,6 +551,20 @@ enum PostfixOperator {
     Transposition,
     Negation,
     Factorial,
+}
+
+impl EmitLatex for PostfixOperator {
+    fn emit(&self) -> String {
+        match self {
+            Self::VectorMarker => "\\to", // the actual vector-marking should be done as a postfix operation on a name atom, such as a-> for example. This is just in case VectorMarker is used as an Atom::BareOperator.
+            Self::Complement => "^\\complement",
+            Self::Factorial => "!",
+            Self::Negation => "\\lnot", // same as vector marker
+            Self::Orthogonal => "^\\bot",
+            Self::Transposition => "^\\top",
+        }
+        .to_string()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -393,6 +586,31 @@ enum BigOperator {
     Maximum,
     Infimum,
     Supremum,
+}
+
+impl EmitLatex for BigOperator {
+    fn emit(&self) -> String {
+        "\\".to_string()
+            + match self {
+                Self::Limit => "lim",
+                Self::Product => "prod",
+                Self::ContourIntegral => "oint",
+                Self::Coproduct => "coprod",
+                Self::DirectSum => "bigoplus",
+                Self::DoubleIntegral => "iint",
+                Self::Infimum => "inf",
+                Self::Integral => "int",
+                Self::Intersection => "bigcap",
+                Self::Maximum => "max",
+                Self::Minimum => "min",
+                Self::QuadrupleIntegral => "iiiint",
+                Self::Sum => "sum",
+                Self::Supremum => "sup",
+                Self::SurfaceIntegral => "oiint",
+                Self::TripleIntegral => "iiint",
+                Self::Union => "bigcup",
+            }
+    }
 }
 
 fn expression(input: &str) -> IResult<&str, Expression> {
@@ -450,7 +668,7 @@ fn relationship(input: &str) -> IResult<&str, Relationship> {
         opt(whitespace),
         opt(alt((tag("not"), tag("!")))),
         relation,
-        opt(decorations),
+        decorations,
         opt(whitespace),
         expression,
     ))(input)?;
@@ -482,18 +700,33 @@ fn test_relationship() {
                     rhs: Expression::A(Box::new(Atom::Name("E".into()))),
                     negated: true,
                     relation: Relation::ElementOf,
-                    relation_decorations: None,
+                    relation_decorations: Decorations {
+                        sub: None,
+                        sup: None,
+                        under: None,
+                        over: None
+                    },
                 })),
                 rhs: Expression::R(Box::new(Relationship {
                     lhs: Expression::A(Box::new(Atom::Name("f".into()))),
                     rhs: Expression::A(Box::new(Atom::Name("F".into()))),
                     negated: false,
                     relation: Relation::ElementOf,
-                    relation_decorations: None,
+                    relation_decorations: Decorations {
+                        sub: None,
+                        sup: None,
+                        under: None,
+                        over: None
+                    },
                 })),
                 negated: false,
                 relation: Relation::Implies,
-                relation_decorations: None,
+                relation_decorations: Decorations {
+                    sub: None,
+                    sup: None,
+                    under: None,
+                    over: None
+                },
             }
         ))
     )
