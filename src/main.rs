@@ -1,5 +1,7 @@
 use nom::number::complete::float;
 use std::collections::HashMap;
+use std::ops::{Index, Range, RangeFrom, RangeTo};
+use std::str::{CharIndices, Chars};
 use unicode_segmentation::UnicodeSegmentation;
 #[macro_use]
 extern crate maplit;
@@ -9,7 +11,186 @@ use nom::character::complete::{alpha1, char, digit1};
 use nom::combinator::opt;
 use nom::error::{Error, ErrorKind, ParseError};
 use nom::sequence::{delimited, preceded, terminated, tuple};
-use nom::{Err, IResult};
+use nom::{AsBytes, Err, IResult, InputLength, Needed, ParseTo, Slice};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct InputState<'a> {
+    input: &'a str,
+    // to prevent left recursion
+    parsing_relationship: bool,
+    parsing_operation: bool,
+}
+
+impl InputState<'_> {
+    fn now_parsing_relationship(self) -> Self {
+        InputState {
+            input: self.input,
+            parsing_relationship: true,
+            parsing_operation: self.parsing_operation,
+        }
+    }
+    fn now_parsing_operation(self) -> Self {
+        InputState {
+            input: self.input,
+            parsing_relationship: self.parsing_relationship,
+            parsing_operation: true,
+        }
+    }
+}
+
+impl AsBytes for InputState<'_> {
+    fn as_bytes(&self) -> &[u8] {
+        self.input.as_bytes()
+    }
+}
+
+impl ParseTo<f32> for InputState<'_> {
+    fn parse_to(&self) -> Option<f32> {
+        self.input.parse_to()
+    }
+}
+
+impl nom::UnspecializedInput for InputState<'_> {}
+
+impl nom::Slice<RangeFrom<usize>> for InputState<'_> {
+    fn slice(&self, range: RangeFrom<usize>) -> Self {
+        Self {
+            input: self.input.slice(range),
+            parsing_relationship: self.parsing_relationship,
+            parsing_operation: self.parsing_operation,
+        }
+    }
+}
+
+impl nom::Offset for InputState<'_> {
+    fn offset(&self, second: &Self) -> usize {
+        self.input.offset(second.input)
+    }
+}
+
+impl nom::Slice<RangeTo<usize>> for InputState<'_> {
+    fn slice(&self, range: RangeTo<usize>) -> Self {
+        Self {
+            input: self.input.slice(range),
+            parsing_relationship: self.parsing_relationship,
+            parsing_operation: self.parsing_operation,
+        }
+    }
+}
+
+impl nom::Slice<Range<usize>> for InputState<'_> {
+    fn slice(&self, range: Range<usize>) -> Self {
+        Self {
+            input: self.input.slice(range),
+            parsing_relationship: self.parsing_relationship,
+            parsing_operation: self.parsing_operation,
+        }
+    }
+}
+
+impl<'a> nom::InputLength for InputState<'a> {
+    fn input_len(&self) -> usize {
+        self.input.input_len()
+    }
+}
+
+impl<'a> nom::InputIter for InputState<'a> {
+    type Item = char;
+    type Iter = CharIndices<'a>;
+    type IterElem = Chars<'a>;
+    fn iter_elements(&self) -> Self::IterElem {
+        self.input.iter_elements()
+    }
+
+    fn iter_indices(&self) -> Self::Iter {
+        self.input.iter_indices()
+    }
+
+    fn position<P>(&self, predicate: P) -> Option<usize>
+    where
+        P: Fn(Self::Item) -> bool,
+    {
+        self.input.position(predicate)
+    }
+
+    fn slice_index(&self, count: usize) -> Result<usize, nom::Needed> {
+        self.input.slice_index(count)
+    }
+}
+
+impl<'a> nom::InputTake for InputState<'a> {
+    fn take(&self, count: usize) -> Self {
+        Self {
+            input: self.input.take(count),
+            parsing_operation: self.parsing_operation,
+            parsing_relationship: self.parsing_relationship,
+        }
+    }
+
+    fn take_split(&self, count: usize) -> (Self, Self) {
+        let (before, after) = self.input.take_split(count);
+        (
+            Self {
+                input: before,
+                parsing_operation: self.parsing_operation,
+                parsing_relationship: self.parsing_relationship,
+            },
+            Self {
+                input: after,
+                parsing_operation: self.parsing_operation,
+                parsing_relationship: self.parsing_relationship,
+            },
+        )
+    }
+}
+
+impl<'a, 'b> nom::Compare<InputState<'b>> for InputState<'a> {
+    fn compare(&self, t: InputState) -> nom::CompareResult {
+        self.input.compare(t.input)
+    }
+
+    fn compare_no_case(&self, t: InputState) -> nom::CompareResult {
+        self.input.compare_no_case(t.input)
+    }
+}
+
+impl<'a, 'b> nom::Compare<&'b str> for InputState<'a> {
+    fn compare(&self, t: &str) -> nom::CompareResult {
+        self.input.compare(t)
+    }
+
+    fn compare_no_case(&self, t: &str) -> nom::CompareResult {
+        self.input.compare_no_case(t)
+    }
+}
+
+impl<'a> core::fmt::Debug for InputState<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[{} {}] {}",
+            if self.parsing_operation { "op" } else { "" },
+            if self.parsing_relationship { "rel" } else { "" },
+            self.input
+        )
+    }
+}
+
+impl<'a> Into<&'a str> for InputState<'a> {
+    fn into(self) -> &'a str {
+        self.input
+    }
+}
+
+impl<'a> From<&'a str> for InputState<'a> {
+    fn from(a: &'a str) -> Self {
+        InputState {
+            input: a,
+            parsing_relationship: false,
+            parsing_operation: false,
+        }
+    }
+}
 
 // TODO custom derive macro to implement enum for PascalCase names as \camelCase (e.g. units)
 trait EmitLatex {
@@ -617,7 +798,7 @@ fn expression(input: &str) -> IResult<&str, Expression> {
     eprintln!("trying expression on {:?}", input);
     if let Ok((tail, q)) = quantification(input) {
         Ok((tail, Expression::Q(Box::new(q))))
-    } else if let Ok((tail, r)) = relationship(input) {
+    } else if let Ok((tail, r)) = relationship(input.now_parsing_relationship()) {
         Ok((tail, Expression::R(Box::new(r))))
     } else if let Ok((tail, o)) = operation(input) {
         Ok((tail, Expression::O(Box::new(o))))
@@ -626,12 +807,12 @@ fn expression(input: &str) -> IResult<&str, Expression> {
     } else {
         Err(Err::Error(Error {
             code: ErrorKind::Alt,
-            input: "",
+            input,
         }))
     }
 }
 
-fn quantification(input: &str) -> IResult<&str, Quantification> {
+fn quantification(input: InputState) -> IResult<InputState, Quantification> {
     eprintln!("trying quantification on {:?}", input);
     let (tail, (quantifier, decos, _, expr)) =
         tuple((quantifier, decorations, whitespace, expression))(input)?;
@@ -645,7 +826,7 @@ fn quantification(input: &str) -> IResult<&str, Quantification> {
     ))
 }
 
-fn quantifier(input: &str) -> IResult<&str, QuantificationMode> {
+fn quantifier(input: InputState) -> IResult<InputState, QuantificationMode> {
     eprintln!("trying quantifier on {:?}", input);
     if let Ok((tail, _)) = alt::<_, _, Error<_>, _>((tag("∀"), tag("AA"), tag("forall")))(input) {
         Ok((tail, QuantificationMode::Universal))
@@ -660,12 +841,18 @@ fn quantifier(input: &str) -> IResult<&str, QuantificationMode> {
     } else {
         Err(Err::Error(Error {
             code: ErrorKind::Alt,
-            input: "",
+            input,
         }))
     }
 }
 
-fn relationship(input: &str) -> IResult<&str, Relationship> {
+fn relationship(input: InputState) -> IResult<InputState, Relationship> {
+    if input.parsing_relationship {
+        return Err(Err::Error(Error {
+            code: ErrorKind::Verify,
+            input: input,
+        }))
+    }
     eprintln!("trying relationship on {:?}", input);
     let (tail, (lhs, _, neg, rel, deco, _, rhs)) = tuple((
         expression,
@@ -695,9 +882,9 @@ fn relationship(input: &str) -> IResult<&str, Relationship> {
 #[test]
 fn test_relationship() {
     assert_eq!(
-        relationship("e !in E => f in F"),
+        relationship("e !in E => f in F".into()),
         Ok((
-            "",
+            "".into(),
             Relationship {
                 lhs: Expression::R(Box::new(Relationship {
                     lhs: Expression::A(Box::new(Atom::Name("e".into()))),
@@ -736,7 +923,7 @@ fn test_relationship() {
     )
 }
 
-fn number(input: &str) -> IResult<&str, Number> {
+fn number(input: InputState) -> IResult<InputState, Number> {
     eprintln!("trying number on {:?}", input);
     if let Ok((tail, float)) = _float_only_when_comma(input) {
         Ok((tail, float))
@@ -745,7 +932,7 @@ fn number(input: &str) -> IResult<&str, Number> {
         Ok((
             tail,
             Number::Integer(
-                number.parse::<i32>().unwrap()
+                number.input.parse::<i32>().unwrap()
                     * match neg {
                         Some(_) => -1,
                         None => 1,
@@ -755,38 +942,60 @@ fn number(input: &str) -> IResult<&str, Number> {
     } else {
         Err(Err::Error(Error {
             code: ErrorKind::Digit,
-            input: "",
+            input,
         }))
     }
 }
 
-fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
-    if !input.contains('.') {
+fn _float_only_when_comma(input: InputState) -> IResult<InputState, Number> {
     eprintln!("trying _float_only_when_comma on {:?}", input);
+    if !input.input.contains('.') {
         return Err(Err::Error(Error {
             code: ErrorKind::Char,
-            input: "",
+            input,
         }));
     }
 
-    let (tail, (neg, nb)) = tuple((opt(char('-')), float::<_, Error<_>>))(input)?;
-    Ok((
-        tail,
-        Number::Float(
-            nb * match neg {
-                Some(_) => -1.0,
-                None => 1.0,
+    match tuple((opt(char('-')), float::<_, Error<_>>))(input.input) {
+        Ok((tail, (neg, nb))) => Ok((
+            InputState {
+                input: tail,
+                parsing_operation: input.parsing_operation,
+                parsing_relationship: input.parsing_relationship,
             },
-        ),
-    ))
+            Number::Float(
+                nb * match neg {
+                    Some(_) => -1.0,
+                    None => 1.0,
+                },
+            ),
+        )),
+        Err(Err::Error(Error { code, input: i })) => Err(Err::Error(Error {
+            code,
+            input: InputState {
+                input: i,
+                parsing_operation: input.parsing_operation,
+                parsing_relationship: input.parsing_relationship,
+            },
+        })),
+        Err(Err::Failure(Error { code, input: i })) => Err(Err::Failure(Error {
+            code,
+            input: InputState {
+                input: i,
+                parsing_operation: input.parsing_operation,
+                parsing_relationship: input.parsing_relationship,
+            },
+        })),
+        Err(Err::Incomplete(needed)) => Err(Err::Incomplete(needed)),
+    }
 }
 
-fn atom(input: &str) -> IResult<&str, Atom, Error<&str>> {
+fn atom(input: InputState) -> IResult<InputState, Atom, Error<InputState>> {
     eprintln!("trying atom on {:?}", input);
     if let Ok((tail, txt)) = text(input) {
         Ok((tail, Atom::Text(txt)))
     } else if let Ok((tail, name)) = alpha1::<_, Error<_>>(input) {
-        Ok((tail, Atom::Name(name.into())))
+        Ok((tail, Atom::Name(name.input.to_string())))
     } else if let Ok((tail, number)) = number(input) {
         Ok((tail, Atom::Number(number)))
     } else if let Ok((tail, qty)) = quantity(input) {
@@ -797,7 +1006,7 @@ fn atom(input: &str) -> IResult<&str, Atom, Error<&str>> {
         Ok((tail, Atom::Group(grp)))
     } else {
         Err(Err::Error(Error {
-            input: "",
+            input,
             code: ErrorKind::Alt,
         }))
     }
@@ -805,16 +1014,22 @@ fn atom(input: &str) -> IResult<&str, Atom, Error<&str>> {
 
 #[test]
 fn test_atom() {
-    assert_eq!(atom("alpha"), Ok(("", Atom::Name("alpha".into()))));
-    assert_eq!(atom("abc87"), Ok(("87", Atom::Name("abc".into()))));
     assert_eq!(
-        atom("65486.848pal"),
-        Ok(("pal", Atom::Number(Number::Float(65486.848))))
+        atom("alpha".into()),
+        Ok(("".into(), Atom::Name("alpha".into())))
     );
     assert_eq!(
-        atom(r#"(int_0^1 sum e in o"R") not= _|_"#),
+        atom("abc87".into()),
+        Ok(("87".into(), Atom::Name("abc".into())))
+    );
+    assert_eq!(
+        atom("65486.848pal".into()),
+        Ok(("pal".into(), Atom::Number(Number::Float(65486.848))))
+    );
+    assert_eq!(
+        atom(r#"(int_0^1 sum e in o"R") not= _|_"#.into()),
         Ok((
-            " not= _|_",
+            " not= _|_".into(),
             Atom::Group(Group::Parenthesized(Expression::R(Box::new(
                 Relationship {
                     lhs: Expression::O(Box::new(Operation {
@@ -840,7 +1055,12 @@ fn test_atom() {
                     })),
                     negated: false,
                     relation: Relation::ElementOf,
-                    relation_decorations: None,
+                    relation_decorations: Decorations {
+                        sub: None,
+                        sup: None,
+                        under: None,
+                        over: None
+                    },
                     rhs: Expression::A(Box::new(Atom::Text(Text {
                         font: TextFont::BlackboardBold,
                         content: "R".into(),
@@ -851,7 +1071,7 @@ fn test_atom() {
     );
 }
 
-fn text(input: &str) -> IResult<&str, Text> {
+fn text(input: InputState) -> IResult<InputState, Text> {
     eprintln!("trying text on {:?}", input);
     let (tail, (maybe_font, content)) = tuple((opt(text_font), quoted_string))(input)?;
     Ok((
@@ -869,9 +1089,9 @@ fn text(input: &str) -> IResult<&str, Text> {
 #[test]
 fn test_text() {
     assert_eq!(
-        text(r#"o"R \"forall\""  is the set of real numbers."#),
+        text(r#"o"R \"forall\""  is the set of real numbers."#.into()),
         Ok((
-            "  is the set of real numbers.",
+            "  is the set of real numbers.".into(),
             Text {
                 content: "R \"forall\"".into(),
                 font: TextFont::BlackboardBold,
@@ -879,9 +1099,9 @@ fn test_text() {
         ))
     );
     assert_eq!(
-        text(r#""""""#),
+        text(r#""""""#.into()),
         Ok((
-            r#""""#,
+            r#""""#.into(),
             Text {
                 content: "".into(),
                 font: TextFont::Normal,
@@ -889,28 +1109,35 @@ fn test_text() {
         ))
     );
     assert_eq!(
-        text("lim_(x->"),
+        text("lim_(x->".into()),
         Err(Err::Error(Error {
             code: ErrorKind::Tag,
-            input: "lim_(x->",
+            input: "lim_(x->".into(),
         }))
     );
 }
 
-fn quoted_string(input: &str) -> IResult<&str, String> {
+fn quoted_string(input: InputState) -> IResult<InputState, String> {
     eprintln!("trying quoted_string on {:?}", input);
     delimited(tag("\""), _in_quotes, tag("\""))(input)
 }
 
-fn _in_quotes(input: &str) -> IResult<&str, String> {
+fn _in_quotes(input: InputState) -> IResult<InputState, String> {
     eprintln!("trying _in_quotes on {:?}", input);
     let mut content = String::new();
     let mut skip_delimiter = false;
-    for (i, ch) in input.char_indices() {
+    for (i, ch) in input.input.char_indices() {
         if ch == '\\' && !skip_delimiter {
             skip_delimiter = true
         } else if ch == '"' && !skip_delimiter {
-            return Ok((&input[i..], content));
+            return Ok((
+                InputState {
+                    input: &input.input[i..],
+                    parsing_operation: input.parsing_operation,
+                    parsing_relationship: input.parsing_relationship,
+                },
+                content,
+            ));
         } else {
             content.push(ch);
             skip_delimiter = false;
@@ -919,7 +1146,7 @@ fn _in_quotes(input: &str) -> IResult<&str, String> {
     Err(Err::Incomplete(nom::Needed::Unknown))
 }
 
-fn text_font(input: &str) -> IResult<&str, TextFont> {
+fn text_font(input: InputState) -> IResult<InputState, TextFont> {
     eprintln!("trying text_font on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -938,7 +1165,7 @@ fn text_font(input: &str) -> IResult<&str, TextFont> {
     )
 }
 
-fn group(input: &str) -> IResult<&str, Group> {
+fn group(input: InputState) -> IResult<InputState, Group> {
     eprintln!("trying group on {:?}", input);
     if let Ok((tail, expr)) = surrounded(expression, "{", "}", true)(input) {
         Ok((tail, Group::Braced(expr)))
@@ -969,27 +1196,27 @@ fn group(input: &str) -> IResult<&str, Group> {
     } else {
         Err(Err::Error(Error {
             code: ErrorKind::Alt,
-            input: "",
+            input,
         }))
     }
 }
 
-fn surrounded<'a, F: 'a, O, E: ParseError<&'a str>>(
+fn surrounded<'a, F: 'a, O, E: ParseError<InputState<'a>>>(
     f: F,
     opening: &'static str,
     closing: &'static str,
     allow_whitespace: bool,
-) -> impl Fn(&'a str) -> IResult<&'a str, O, E>
+) -> impl Fn(InputState<'a>) -> IResult<InputState<'a>, O, E>
 where
-    F: Fn(&'a str) -> IResult<&'a str, O, E>,
+    F: Fn(InputState<'a>) -> IResult<InputState<'a>, O, E>,
 {
     move |input| delimited(tag(opening), &f, tag(closing))(input)
 }
 
-fn whitespace(input: &str) -> IResult<&str, &str> {
+fn whitespace(input: InputState) -> IResult<InputState, &str> {
     eprintln!("trying whitespace on {:?}", input);
     let mut tail_starts_at = 0;
-    for grapheme in input.graphemes(true) {
+    for grapheme in input.input.graphemes(true) {
         if grapheme != " " {
             break;
         }
@@ -998,15 +1225,22 @@ fn whitespace(input: &str) -> IResult<&str, &str> {
     if tail_starts_at == 0 {
         Err(Err::Error(Error {
             code: ErrorKind::NoneOf,
-            input: "",
+            input,
         }))
     } else {
-        let (parsed, tail) = input.split_at(tail_starts_at);
-        Ok((tail, parsed))
+        let (parsed, tail) = input.input.split_at(tail_starts_at);
+        Ok((
+            InputState {
+                input: tail,
+                parsing_operation: input.parsing_operation,
+                parsing_relationship: input.parsing_relationship,
+            },
+            parsed,
+        ))
     }
 }
 
-fn quantity(input: &str) -> IResult<&str, Quantity> {
+fn quantity(input: InputState) -> IResult<InputState, Quantity> {
     eprintln!("trying quantity on {:?}", input);
     let (tail, (value, _, u)) = tuple((number, whitespace, unit))(input)?;
     Ok((
@@ -1021,9 +1255,9 @@ fn quantity(input: &str) -> IResult<&str, Quantity> {
 #[test]
 fn test_quantity() {
     assert_eq!(
-        quantity("352.8 µS/s*m^2@"),
+        quantity("352.8 µS/s*m^2@".into()),
         Ok((
-            "@",
+            "@".into(),
             Quantity {
                 value: Number::Float(352.8),
                 unit: Box::new(Unit::Ratio(
@@ -1041,7 +1275,7 @@ fn test_quantity() {
     )
 }
 
-fn unit(input: &str) -> IResult<&str, Unit> {
+fn unit(input: InputState) -> IResult<InputState, Unit> {
     eprintln!("trying unit on {:?}", input);
     if let Ok((tail, (a, _, b))) = tuple((_unit_no_bin_op, char('*'), unit))(input) {
         Ok((tail, Unit::Product(Box::new(a), Box::new(b))))
@@ -1052,7 +1286,7 @@ fn unit(input: &str) -> IResult<&str, Unit> {
     }
 }
 
-fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
+fn _unit_no_bin_op(input: InputState) -> IResult<InputState, Unit> {
     eprintln!("trying _unit_no_bin_op on {:?}", input);
     if let Ok((tail, (u, _, pow))) = tuple((_unit_no_op, char('^'), atom))(input) {
         Ok((tail, Unit::Power(Box::new(u), pow)))
@@ -1061,7 +1295,7 @@ fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
     }
 }
 
-fn _unit_no_op(input: &str) -> IResult<&str, Unit> {
+fn _unit_no_op(input: InputState) -> IResult<InputState, Unit> {
     eprintln!("trying _unit_no_op on {:?}", input);
     if let Ok((tail, (prefix, fundamental))) = tuple((unit_prefix, fundamental_unit))(input) {
         Ok((tail, Unit::Prefixed(prefix, fundamental)))
@@ -1070,7 +1304,7 @@ fn _unit_no_op(input: &str) -> IResult<&str, Unit> {
     } else {
         Err(Err::Error(Error {
             code: ErrorKind::Alt,
-            input: "",
+            input,
         }))
     }
 }
@@ -1078,9 +1312,9 @@ fn _unit_no_op(input: &str) -> IResult<&str, Unit> {
 #[test]
 fn test_unit() {
     assert_eq!(
-        unit("MeV*km^-1, "),
+        unit("MeV*km^-1, ".into()),
         Ok((
-            ", ",
+            ", ".into(),
             Unit::Product(
                 Box::new(Unit::Prefixed(
                     UnitPrefix::Mega,
@@ -1095,7 +1329,7 @@ fn test_unit() {
     )
 }
 
-fn unit_prefix(input: &str) -> IResult<&str, UnitPrefix> {
+fn unit_prefix(input: InputState) -> IResult<InputState, UnitPrefix> {
     eprintln!("trying unit_prefix on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -1116,7 +1350,7 @@ fn unit_prefix(input: &str) -> IResult<&str, UnitPrefix> {
     )
 }
 
-fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
+fn fundamental_unit(input: InputState) -> IResult<InputState, FundamentalUnit> {
     eprintln!("trying fundamental_unit on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -1150,7 +1384,7 @@ fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
     )
 }
 
-fn operation(input: &str) -> IResult<&str, Operation> {
+fn operation(input: InputState) -> IResult<InputState, Operation> {
     eprintln!("trying operation on {:?}", input);
     if let Ok((tail, (lhs, operator, decorations, rhs))) = tuple((
         terminated(expression, whitespace),
@@ -1216,12 +1450,12 @@ fn operation(input: &str) -> IResult<&str, Operation> {
     } else {
         Err(nom::Err::Error(Error {
             code: ErrorKind::Alt,
-            input: "",
+            input,
         }))
     }
 }
 
-fn decorations(input: &str) -> IResult<&str, Decorations> {
+fn decorations(input: InputState) -> IResult<InputState, Decorations> {
     eprintln!("trying decorations on {:?}", input);
     let (tail, (under, over, sub, sup)) = tuple((
         opt(preceded(tag("__"), atom)),
@@ -1244,9 +1478,9 @@ fn decorations(input: &str) -> IResult<&str, Decorations> {
 #[test]
 fn test_decorations() {
     assert_eq!(
-        decorations(r#"__8^^m"good stuff right therre!!! amirite^4???"_(x->0)88"#),
+        decorations(r#"__8^^m"good stuff right therre!!! amirite^4???"_(x->0)88"#.into()),
         Ok((
-            "88",
+            "88".into(),
             Decorations {
                 under: Some(Atom::Number(Number::Integer(8))),
                 over: Some(Atom::Text(Text {
@@ -1259,16 +1493,21 @@ fn test_decorations() {
                         rhs: Expression::A(Box::new(Atom::Number(Number::Integer(0)))),
                         relation: Relation::Tends,
                         negated: false,
-                        relation_decorations: None,
+                        relation_decorations: Decorations {
+                            sub: None,
+                            sup: None,
+                            under: None,
+                            over: None
+                        },
                     }
                 ))))),
                 sup: None,
             }
         ))
-    )
+    );
 }
 
-fn relation(input: &str) -> IResult<&str, Relation> {
+fn relation(input: InputState) -> IResult<InputState, Relation> {
     eprintln!("trying relation on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -1278,7 +1517,7 @@ fn relation(input: &str) -> IResult<&str, Relation> {
     )
 }
 
-fn operator(input: &str) -> IResult<&str, Operator> {
+fn operator(input: InputState) -> IResult<InputState, Operator> {
     eprintln!("trying operator on {:?}", input);
     if let Ok((tail, op)) = binary_operator(input) {
         Ok((tail, Operator::Binary(op)))
@@ -1291,12 +1530,12 @@ fn operator(input: &str) -> IResult<&str, Operator> {
     } else {
         Err(Err::Error(Error {
             code: ErrorKind::Alt,
-            input: "",
+            input,
         }))
     }
 }
 
-fn binary_operator(input: &str) -> IResult<&str, BinaryOperator> {
+fn binary_operator(input: InputState) -> IResult<InputState, BinaryOperator> {
     eprintln!("trying binary_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -1308,17 +1547,20 @@ fn binary_operator(input: &str) -> IResult<&str, BinaryOperator> {
 
 #[test]
 fn test_binary_operator() {
-    assert_eq!(binary_operator("+"), Ok(("", BinaryOperator::Addition)));
     assert_eq!(
-        prefix_operator("hmmmmmm"),
+        binary_operator("+".into()),
+        Ok(("".into(), BinaryOperator::Addition))
+    );
+    assert_eq!(
+        prefix_operator("hmmmmmm".into()),
         Err(nom::Err::Error(Error {
             code: ErrorKind::Alt,
-            input: ""
+            input: "hmmmmmm".into(),
         }))
     );
 }
 
-fn prefix_operator(input: &str) -> IResult<&str, PrefixOperator> {
+fn prefix_operator(input: InputState) -> IResult<InputState, PrefixOperator> {
     eprintln!("trying prefix_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -1333,19 +1575,19 @@ fn prefix_operator(input: &str) -> IResult<&str, PrefixOperator> {
 #[test]
 fn test_prefix_operator() {
     assert_eq!(
-        prefix_operator("¬A^B"),
-        Ok(("A^B", PrefixOperator::Negation))
+        prefix_operator("¬A^B".into()),
+        Ok(("A^B".into(), PrefixOperator::Negation))
     );
     assert_eq!(
-        prefix_operator("hmmmmmm"),
+        prefix_operator("hmmmmmm".into()),
         Err(nom::Err::Error(Error {
             code: ErrorKind::Alt,
-            input: ""
+            input: "hmmmmmm".into()
         }))
     );
 }
 
-fn postfix_operator(input: &str) -> IResult<&str, PostfixOperator> {
+fn postfix_operator(input: InputState) -> IResult<InputState, PostfixOperator> {
     eprintln!("trying postfix_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -1359,17 +1601,20 @@ fn postfix_operator(input: &str) -> IResult<&str, PostfixOperator> {
 
 #[test]
 fn test_postfix_operator() {
-    assert_eq!(postfix_operator("!"), Ok(("", PostfixOperator::Factorial)));
     assert_eq!(
-        postfix_operator("haha"),
+        postfix_operator("!".into()),
+        Ok(("".into(), PostfixOperator::Factorial))
+    );
+    assert_eq!(
+        postfix_operator("haha".into()),
         Err(nom::Err::Error(Error {
             code: ErrorKind::Alt,
-            input: ""
+            input: "haha".into(),
         }))
     );
 }
 
-fn big_operator(input: &str) -> IResult<&str, BigOperator> {
+fn big_operator(input: InputState) -> IResult<InputState, BigOperator> {
     eprintln!("trying big_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
@@ -1386,28 +1631,28 @@ fn big_operator(input: &str) -> IResult<&str, BigOperator> {
 #[test]
 fn test_big_operator() {
     assert_eq!(
-        big_operator("lim_(x->0)"),
-        Ok(("_(x->0)", BigOperator::Limit))
+        big_operator("lim_(x->0)".into()),
+        Ok(("_(x->0)".into(), BigOperator::Limit))
     );
 
     assert_eq!(
-        big_operator("Sum_(n=0)^oo u_n"),
-        Ok(("_(n=0)^oo u_n", BigOperator::Sum))
+        big_operator("Sum_(n=0)^oo u_n".into()),
+        Ok(("_(n=0)^oo u_n".into(), BigOperator::Sum))
     );
 
     assert_eq!(
-        big_operator("UUNion"),
+        big_operator("UUNion".into()),
         Err(nom::Err::Error(Error {
             code: nom::error::ErrorKind::Alt,
-            input: ""
+            input: "UUNion".into()
         }))
     )
 }
 
 fn match_enum_variants_to_literals<'a, T>(
-    input: &'a str,
+    input: InputState<'a>,
     mapping: HashMap<T, Vec<&'a str>>,
-) -> IResult<&'a str, T> {
+) -> IResult<InputState<'a>, T> {
     for (variant, literals) in mapping {
         if let Some(tail) = try_prefixes(input, literals) {
             return Ok((tail, variant));
@@ -1415,14 +1660,18 @@ fn match_enum_variants_to_literals<'a, T>(
     }
     Err(Err::Error(Error {
         code: ErrorKind::Alt,
-        input: "",
+        input,
     }))
 }
 
-fn try_prefixes<'a>(input: &'a str, prefixes: Vec<&'a str>) -> Option<&'a str> {
+fn try_prefixes<'a>(input: InputState<'a>, prefixes: Vec<&'a str>) -> Option<InputState<'a>> {
     for prefix in prefixes {
-        if let Some(tail) = input.strip_prefix(prefix) {
-            return Some(tail);
+        if let Some(tail) = input.input.strip_prefix(prefix) {
+            return Some(InputState {
+                input: tail,
+                parsing_operation: input.parsing_operation,
+                parsing_relationship: input.parsing_relationship,
+            });
         }
     }
     None
