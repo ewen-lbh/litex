@@ -614,6 +614,7 @@ impl EmitLatex for BigOperator {
 }
 
 fn expression(input: &str) -> IResult<&str, Expression> {
+    eprintln!("trying expression on {:?}", input);
     if let Ok((tail, q)) = quantification(input) {
         Ok((tail, Expression::Q(Box::new(q))))
     } else if let Ok((tail, r)) = relationship(input) {
@@ -631,6 +632,7 @@ fn expression(input: &str) -> IResult<&str, Expression> {
 }
 
 fn quantification(input: &str) -> IResult<&str, Quantification> {
+    eprintln!("trying quantification on {:?}", input);
     let (tail, (quantifier, decos, _, expr)) =
         tuple((quantifier, decorations, whitespace, expression))(input)?;
     Ok((
@@ -644,6 +646,7 @@ fn quantification(input: &str) -> IResult<&str, Quantification> {
 }
 
 fn quantifier(input: &str) -> IResult<&str, QuantificationMode> {
+    eprintln!("trying quantifier on {:?}", input);
     if let Ok((tail, _)) = alt::<_, _, Error<_>, _>((tag("∀"), tag("AA"), tag("forall")))(input) {
         Ok((tail, QuantificationMode::Universal))
     } else if let Ok((tail, _)) =
@@ -663,6 +666,7 @@ fn quantifier(input: &str) -> IResult<&str, QuantificationMode> {
 }
 
 fn relationship(input: &str) -> IResult<&str, Relationship> {
+    eprintln!("trying relationship on {:?}", input);
     let (tail, (lhs, _, neg, rel, deco, _, rhs)) = tuple((
         expression,
         opt(whitespace),
@@ -733,6 +737,7 @@ fn test_relationship() {
 }
 
 fn number(input: &str) -> IResult<&str, Number> {
+    eprintln!("trying number on {:?}", input);
     if let Ok((tail, float)) = _float_only_when_comma(input) {
         Ok((tail, float))
     } else if let Ok((tail, (neg, number))) = tuple((opt(char('-')), digit1::<_, Error<_>>))(input)
@@ -757,6 +762,7 @@ fn number(input: &str) -> IResult<&str, Number> {
 
 fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
     if !input.contains('.') {
+    eprintln!("trying _float_only_when_comma on {:?}", input);
         return Err(Err::Error(Error {
             code: ErrorKind::Char,
             input: "",
@@ -776,6 +782,7 @@ fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
 }
 
 fn atom(input: &str) -> IResult<&str, Atom, Error<&str>> {
+    eprintln!("trying atom on {:?}", input);
     if let Ok((tail, txt)) = text(input) {
         Ok((tail, Atom::Text(txt)))
     } else if let Ok((tail, name)) = alpha1::<_, Error<_>>(input) {
@@ -845,6 +852,7 @@ fn test_atom() {
 }
 
 fn text(input: &str) -> IResult<&str, Text> {
+    eprintln!("trying text on {:?}", input);
     let (tail, (maybe_font, content)) = tuple((opt(text_font), quoted_string))(input)?;
     Ok((
         tail,
@@ -890,10 +898,12 @@ fn test_text() {
 }
 
 fn quoted_string(input: &str) -> IResult<&str, String> {
+    eprintln!("trying quoted_string on {:?}", input);
     delimited(tag("\""), _in_quotes, tag("\""))(input)
 }
 
 fn _in_quotes(input: &str) -> IResult<&str, String> {
+    eprintln!("trying _in_quotes on {:?}", input);
     let mut content = String::new();
     let mut skip_delimiter = false;
     for (i, ch) in input.char_indices() {
@@ -910,6 +920,7 @@ fn _in_quotes(input: &str) -> IResult<&str, String> {
 }
 
 fn text_font(input: &str) -> IResult<&str, TextFont> {
+    eprintln!("trying text_font on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
@@ -928,6 +939,7 @@ fn text_font(input: &str) -> IResult<&str, TextFont> {
 }
 
 fn group(input: &str) -> IResult<&str, Group> {
+    eprintln!("trying group on {:?}", input);
     if let Ok((tail, expr)) = surrounded(expression, "{", "}", true)(input) {
         Ok((tail, Group::Braced(expr)))
     } else if let Ok((tail, expr)) = surrounded(expression, "(", ")", true)(input) {
@@ -975,6 +987,7 @@ where
 }
 
 fn whitespace(input: &str) -> IResult<&str, &str> {
+    eprintln!("trying whitespace on {:?}", input);
     let mut tail_starts_at = 0;
     for grapheme in input.graphemes(true) {
         if grapheme != " " {
@@ -994,6 +1007,7 @@ fn whitespace(input: &str) -> IResult<&str, &str> {
 }
 
 fn quantity(input: &str) -> IResult<&str, Quantity> {
+    eprintln!("trying quantity on {:?}", input);
     let (tail, (value, _, u)) = tuple((number, whitespace, unit))(input)?;
     Ok((
         tail,
@@ -1028,6 +1042,7 @@ fn test_quantity() {
 }
 
 fn unit(input: &str) -> IResult<&str, Unit> {
+    eprintln!("trying unit on {:?}", input);
     if let Ok((tail, (a, _, b))) = tuple((_unit_no_bin_op, char('*'), unit))(input) {
         Ok((tail, Unit::Product(Box::new(a), Box::new(b))))
     } else if let Ok((tail, (a, _, b))) = tuple((_unit_no_bin_op, char('/'), unit))(input) {
@@ -1038,6 +1053,7 @@ fn unit(input: &str) -> IResult<&str, Unit> {
 }
 
 fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
+    eprintln!("trying _unit_no_bin_op on {:?}", input);
     if let Ok((tail, (u, _, pow))) = tuple((_unit_no_op, char('^'), atom))(input) {
         Ok((tail, Unit::Power(Box::new(u), pow)))
     } else {
@@ -1046,6 +1062,7 @@ fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
 }
 
 fn _unit_no_op(input: &str) -> IResult<&str, Unit> {
+    eprintln!("trying _unit_no_op on {:?}", input);
     if let Ok((tail, (prefix, fundamental))) = tuple((unit_prefix, fundamental_unit))(input) {
         Ok((tail, Unit::Prefixed(prefix, fundamental)))
     } else if let Ok((tail, u)) = fundamental_unit(input) {
@@ -1079,6 +1096,7 @@ fn test_unit() {
 }
 
 fn unit_prefix(input: &str) -> IResult<&str, UnitPrefix> {
+    eprintln!("trying unit_prefix on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
@@ -1099,6 +1117,7 @@ fn unit_prefix(input: &str) -> IResult<&str, UnitPrefix> {
 }
 
 fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
+    eprintln!("trying fundamental_unit on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
@@ -1132,6 +1151,7 @@ fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
 }
 
 fn operation(input: &str) -> IResult<&str, Operation> {
+    eprintln!("trying operation on {:?}", input);
     if let Ok((tail, (lhs, operator, decorations, rhs))) = tuple((
         terminated(expression, whitespace),
         binary_operator,
@@ -1202,6 +1222,7 @@ fn operation(input: &str) -> IResult<&str, Operation> {
 }
 
 fn decorations(input: &str) -> IResult<&str, Decorations> {
+    eprintln!("trying decorations on {:?}", input);
     let (tail, (under, over, sub, sup)) = tuple((
         opt(preceded(tag("__"), atom)),
         opt(preceded(tag("^^"), atom)),
@@ -1248,6 +1269,7 @@ fn test_decorations() {
 }
 
 fn relation(input: &str) -> IResult<&str, Relation> {
+    eprintln!("trying relation on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
@@ -1257,6 +1279,7 @@ fn relation(input: &str) -> IResult<&str, Relation> {
 }
 
 fn operator(input: &str) -> IResult<&str, Operator> {
+    eprintln!("trying operator on {:?}", input);
     if let Ok((tail, op)) = binary_operator(input) {
         Ok((tail, Operator::Binary(op)))
     } else if let Ok((tail, op)) = prefix_operator(input) {
@@ -1274,6 +1297,7 @@ fn operator(input: &str) -> IResult<&str, Operator> {
 }
 
 fn binary_operator(input: &str) -> IResult<&str, BinaryOperator> {
+    eprintln!("trying binary_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
@@ -1295,6 +1319,7 @@ fn test_binary_operator() {
 }
 
 fn prefix_operator(input: &str) -> IResult<&str, PrefixOperator> {
+    eprintln!("trying prefix_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
@@ -1321,6 +1346,7 @@ fn test_prefix_operator() {
 }
 
 fn postfix_operator(input: &str) -> IResult<&str, PostfixOperator> {
+    eprintln!("trying postfix_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
@@ -1344,6 +1370,7 @@ fn test_postfix_operator() {
 }
 
 fn big_operator(input: &str) -> IResult<&str, BigOperator> {
+    eprintln!("trying big_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
         hashmap! {
