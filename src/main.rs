@@ -30,55 +30,111 @@ enum Expression {
     Q(Box<Quantification>),
     R(Box<Relationship>),
     A(Box<Atom>),
+    DA(Box<Decorated<Atom>>),
+    F(Box<FunctionCall>),
     O(Box<Operation>),
+}
+
+#[derive(Debug, PartialEq)]
+struct FunctionCall {
+    caller: Decorated<Atom>,
+    arguments: Expression,
+}
+
+impl EmitLatex for FunctionCall {
+    fn emit(&self) -> String {
+        format!(
+            "{}({})",
+            self.caller.emit_keep_parens(),
+            self.arguments.emit_keep_parens()
+        )
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct Decorated<T> {
+    decoratee: T,
+    decorations: Decorations,
+}
+
+impl<T> Decorated<T> {
+    fn none(t: T) -> Self {
+        Self {
+            decoratee: t,
+            decorations: Decorations::none(),
+        }
+    }
+
+    fn new(t: T, decorations: Decorations) -> Self {
+        Self {
+            decoratee: t,
+            decorations,
+        }
+    }
+
+    fn sub(t: T, sub: Atom) -> Self {
+        Self {
+            decoratee: t,
+            decorations: Decorations {
+                sub: Some(sub),
+                sup: None,
+                under: None,
+                over: None,
+            },
+        }
+    }
 }
 
 impl EmitLatexHasParens for Expression {
     fn emit_keep_parens(&self) -> String {
         match self {
-            Expression::A(atom) => atom.emit_keep_parens(),
+            Expression::A(inner) => inner.emit_keep_parens(),
             Expression::O(inner) => inner.emit(),
             Expression::Q(inner) => inner.emit(),
             Expression::R(inner) => inner.emit(),
+            Expression::DA(inner) => inner.emit_keep_parens(),
+            Expression::F(inner) => inner.emit(),
         }
     }
     fn emit_throw_parens(&self) -> String {
         match self {
-            Expression::A(atom) => atom.emit_throw_parens(),
+            Expression::A(inner) => inner.emit_throw_parens(),
             Expression::O(inner) => inner.emit(),
             Expression::Q(inner) => inner.emit(),
             Expression::R(inner) => inner.emit(),
+            Expression::DA(inner) => inner.emit_throw_parens(),
+            Expression::F(inner) => inner.emit(),
         }
     }
     fn emit_unwrap_parens(&self) -> String {
         match self {
-            Expression::A(atom) => atom.emit_unwrap_parens(),
+            Expression::A(inner) => inner.emit_unwrap_parens(),
             Expression::O(inner) => inner.emit(),
             Expression::Q(inner) => inner.emit(),
             Expression::R(inner) => inner.emit(),
+            Expression::DA(inner) => inner.emit_unwrap_parens(),
+            Expression::F(inner) => inner.emit(),
         }
     }
 }
 
 #[derive(Debug, PartialEq)]
 struct Quantification {
-    mode: QuantificationMode,
-    decorations: Decorations,
+    quantifier: Decorated<Quantifier>,
     expression: Expression,
 }
 
 impl EmitLatex for Quantification {
     fn emit(&self) -> String {
         format!(
-            "{}{},\\ {}",
-            self.mode.emit(),
-            self.decorations.emit(),
+            "{},\\ {}",
+            self.quantifier.emit(),
             self.expression.emit_keep_parens()
         )
     }
 }
 
-impl EmitLatex for QuantificationMode {
+impl EmitLatex for Quantifier {
     fn emit(&self) -> String {
         match *self {
             Self::Existential => "\\exists",
@@ -89,22 +145,106 @@ impl EmitLatex for QuantificationMode {
     }
 }
 
-impl EmitLatex for Decorations {
-    fn emit(&self) -> String {
-        let mut latex = String::new();
-        if let Some(sub_expr) = &self.sub {
+impl<T: EmitLatexHasParens> EmitLatexHasParens for Decorated<T> {
+    fn emit_keep_parens(&self) -> String {
+        let mut latex = self.decoratee.emit_keep_parens();
+        if let Some(sub_expr) = &self.decorations.sub {
             latex.extend(format!("_{}", sub_expr.emit_unwrap_parens()).chars());
         }
-        if let Some(sup_expr) = &self.sup {
+        if let Some(sup_expr) = &self.decorations.sup {
             latex.extend(format!("^{}", sup_expr.emit_unwrap_parens()).chars());
         }
-        // TODO requires storing the atom/operator/whatever being decorated, thus it shouldn't be decorations(...) but a parser combinator, decorated(...).
-        // if let Some(under_expr) = self.under {
-        //     latex = format!("\\undertext{{{}}}", under_expr.emit_throw_parens())
-        // }
-        // if let Some(over_expr) = self.over {
+        if let Some(under_expr) = &self.decorations.under {
+            latex = format!(
+                "\\underbrace{{{}}}_{{{}}}",
+                latex,
+                under_expr.emit_throw_parens()
+            )
+        }
+        if let Some(over_expr) = &self.decorations.over {
+            latex = format!(
+                "\\overbrace{{{}}}^{{{}}}",
+                latex,
+                over_expr.emit_throw_parens()
+            )
+        }
+        latex
+    }
 
-        // }
+    fn emit_throw_parens(&self) -> String {
+        let mut latex = self.decoratee.emit_throw_parens();
+        if let Some(sub_expr) = &self.decorations.sub {
+            latex.extend(format!("_{}", sub_expr.emit_unwrap_parens()).chars());
+        }
+        if let Some(sup_expr) = &self.decorations.sup {
+            latex.extend(format!("^{}", sup_expr.emit_unwrap_parens()).chars());
+        }
+        if let Some(under_expr) = &self.decorations.under {
+            latex = format!(
+                "\\underbrace{{{}}}_{{{}}}",
+                latex,
+                under_expr.emit_throw_parens()
+            )
+        }
+        if let Some(over_expr) = &self.decorations.over {
+            latex = format!(
+                "\\overbrace{{{}}}^{{{}}}",
+                latex,
+                over_expr.emit_throw_parens()
+            )
+        }
+        latex
+    }
+
+    fn emit_unwrap_parens(&self) -> String {
+        let mut latex = self.decoratee.emit_unwrap_parens();
+        if let Some(sub_expr) = &self.decorations.sub {
+            latex.extend(format!("_{}", sub_expr.emit_unwrap_parens()).chars());
+        }
+        if let Some(sup_expr) = &self.decorations.sup {
+            latex.extend(format!("^{}", sup_expr.emit_unwrap_parens()).chars());
+        }
+        if let Some(under_expr) = &self.decorations.under {
+            latex = format!(
+                "\\underbrace{{{}}}_{{{}}}",
+                latex,
+                under_expr.emit_throw_parens()
+            )
+        }
+        if let Some(over_expr) = &self.decorations.over {
+            latex = format!(
+                "\\overbrace{{{}}}^{{{}}}",
+                latex,
+                over_expr.emit_throw_parens()
+            )
+        }
+        latex
+    }
+}
+
+impl<T: EmitLatex> EmitLatex for Decorated<T> {
+    fn emit(&self) -> String {
+        let mut latex = self.decoratee.emit();
+        if let Some(sub_expr) = &self.decorations.sub {
+            latex.extend(format!("_{}", sub_expr.emit_unwrap_parens()).chars());
+        }
+        if let Some(sup_expr) = &self.decorations.sup {
+            latex.extend(format!("^{}", sup_expr.emit_unwrap_parens()).chars());
+        }
+        if let Some(under_expr) = &self.decorations.under {
+            latex = format!(
+                "\\underbrace{{{}}}_{{{}}}",
+                latex,
+                under_expr.emit_throw_parens()
+            )
+        }
+        if let Some(over_expr) = &self.decorations.over {
+            latex = format!(
+                "\\overbrace{{{}}}^{{{}}}",
+                latex,
+                over_expr.emit_throw_parens()
+            )
+        }
         latex
     }
 }
@@ -112,8 +252,7 @@ impl EmitLatex for Decorations {
 #[derive(Debug, PartialEq)]
 struct Relationship {
     lhs: Expression,
-    relation: Relation,
-    relation_decorations: Decorations,
+    relation: Decorated<Relation>,
     negated: bool,
     rhs: Expression,
 }
@@ -121,11 +260,10 @@ struct Relationship {
 impl EmitLatex for Relationship {
     fn emit(&self) -> String {
         format!(
-            "{} {}{}{} {}",
+            "{} {}{} {}",
             self.lhs.emit_keep_parens(),
             if self.negated { "\\not" } else { "" },
             self.relation.emit(),
-            self.relation_decorations.emit(),
             self.rhs.emit_keep_parens()
         )
     }
@@ -143,6 +281,7 @@ enum Atom {
     Number(Number),
     Quantity(Quantity),
     BareOperator(BinaryOperator),
+    Symbol(Symbol),
     Text(Text),
     Group(Group),
 }
@@ -343,8 +482,7 @@ enum FundamentalUnit {
 #[derive(Debug, PartialEq)]
 struct Operation {
     lhs: Option<Expression>,
-    operator: Operator,
-    operator_decorations: Decorations,
+    operator: Decorated<Operator>,
     rhs: Option<Expression>,
 }
 
@@ -357,37 +495,46 @@ macro_rules! refunwrap {
 impl EmitLatex for Operation {
     fn emit(&self) -> String {
         match &self.operator {
-            Operator::Binary(_) => format!(
-                "{} {}{} {}",
+            Decorated {
+                decoratee: Operator::Binary(_),
+                ..
+            } => format!(
+                "{} {} {}",
                 refunwrap!(self.lhs).emit_keep_parens(),
                 self.operator.emit(),
-                self.operator_decorations.emit(),
                 refunwrap!(self.rhs).emit_keep_parens()
             ),
-            Operator::Big(_) => format!(
-                "{}{} {}",
+            Decorated {
+                decoratee: Operator::Big(_),
+                ..
+            } => format!(
+                "{} {}",
                 self.operator.emit(),
-                self.operator_decorations.emit(),
                 refunwrap!(self.rhs).emit_keep_parens()
             ),
-            Operator::Prefix(_) => format!(
-                "{}{}{}",
+            Decorated {
+                decoratee: Operator::Prefix(_),
+                ..
+            } => format!(
+                "{}{}",
                 self.operator.emit(),
-                self.operator_decorations.emit(),
                 refunwrap!(self.rhs).emit_keep_parens()
             ),
-            Operator::Postfix(op) => match op {
+            Decorated {
+                decoratee: Operator::Postfix(op),
+                decorations,
+            } => match op {
                 PostfixOperator::VectorMarker => {
                     match refunwrap!(self.lhs).emit_throw_parens().len() {
                         1 => format!(
                             "\\vec{{{}}}{}",
                             refunwrap!(self.lhs).emit_keep_parens(),
-                            self.operator_decorations.emit()
+                            decorations.emit(),
                         ),
                         _ => format!(
                             "\\overrightarrow{{{}}}{}",
                             refunwrap!(self.lhs).emit_unwrap_parens(),
-                            self.operator_decorations.emit()
+                            decorations.emit(),
                         ),
                     }
                 }
@@ -397,13 +544,13 @@ impl EmitLatex for Operation {
                         1 => refunwrap!(self.lhs).emit_keep_parens(),
                         _ => refunwrap!(self.lhs).emit_unwrap_parens(),
                     },
-                    self.operator_decorations.emit()
+                    decorations.emit()
                 ),
                 _ => format!(
                     "{}{}{}",
                     refunwrap!(self.lhs).emit_keep_parens(),
                     self.operator.emit(),
-                    self.operator_decorations.emit()
+                    decorations.emit()
                 ),
             },
         }
@@ -411,7 +558,7 @@ impl EmitLatex for Operation {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-enum QuantificationMode {
+enum Quantifier {
     Universal,
     Existential,
     UniquelyExistential,
@@ -424,6 +571,39 @@ struct Decorations {
     under: Option<Atom>,
     over: Option<Atom>,
 }
+
+impl Decorations {
+    fn none() -> Self {
+        Decorations {
+            sub: None,
+            sup: None,
+            under: None,
+            over: None,
+        }
+    }
+}
+
+impl EmitLatex for Decorations {
+    fn emit(&self) -> String {
+        if let (None, None) = (&self.over, &self.under) {
+            let mut out = match &self.sub {
+                Some(s) => format!("_{}", s.emit_unwrap_parens()),
+                None => "".to_string(),
+            };
+            out.extend(
+                (match &self.sup {
+                    Some(s) => format!("^{}", s.emit_unwrap_parens()),
+                    None => "".to_string(),
+                })
+                .chars(),
+            );
+            out
+        } else {
+            panic!("should be handled in Decorated<T>!")
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum Relation {
     Equals,
@@ -464,6 +644,14 @@ impl EmitLatex for Relation {
         }
         .to_string()
     }
+}
+
+#[derive(Debug, PartialEq)]
+enum Symbol {
+    Infinity,
+    Aleph,
+    Beth,
+    Gimmel,
 }
 
 #[derive(Debug, PartialEq)]
@@ -638,24 +826,23 @@ fn quantification(input: &str) -> IResult<&str, Quantification> {
     Ok((
         tail,
         Quantification {
-            decorations: decos,
             expression: expr,
-            mode: quantifier,
+            quantifier: Decorated::new(quantifier, decos),
         },
     ))
 }
 
-fn quantifier(input: &str) -> IResult<&str, QuantificationMode> {
+fn quantifier(input: &str) -> IResult<&str, Quantifier> {
     eprintln!("trying quantifier on {:?}", input);
     if let Ok((tail, _)) = alt::<_, _, Error<_>, _>((tag("∀"), tag("AA"), tag("forall")))(input) {
-        Ok((tail, QuantificationMode::Universal))
+        Ok((tail, Quantifier::Universal))
     } else if let Ok((tail, _)) =
         alt::<_, _, Error<_>, _>((tag("∃"), tag("EE"), tag("exists")))(input)
     {
         if let Ok((tail, _)) = tag::<_, _, Error<_>>("!")(tail) {
-            Ok((tail, QuantificationMode::UniquelyExistential))
+            Ok((tail, Quantifier::UniquelyExistential))
         } else {
-            Ok((tail, QuantificationMode::Existential))
+            Ok((tail, Quantifier::Existential))
         }
     } else {
         Err(Err::Error(Error {
@@ -667,6 +854,40 @@ fn quantifier(input: &str) -> IResult<&str, QuantificationMode> {
 
 fn relationship(input: &str) -> IResult<&str, Relationship> {
     eprintln!("trying relationship on {:?}", input);
+
+    // Special case to parse expr --(x->0)-> 4
+    if let Ok((tail, (lhs, _, neg, _, pred, _, _, rhs))) = tuple((
+        expression,
+        opt(whitespace),
+        opt(alt((tag("not"), tag("!")))),
+        tag("--"),
+        atom,
+        tag("->"),
+        opt(whitespace),
+        expression,
+    ))(input)
+    {
+        return Ok((
+            tail,
+            Relationship {
+                lhs: lhs,
+                negated: match neg {
+                    Some(_) => true,
+                    None => false,
+                },
+                relation: Decorated::new(
+                    Relation::Tends,
+                    Decorations {
+                        sub: Some(pred),
+                        sup: None,
+                        under: None,
+                        over: None,
+                    },
+                ),
+                rhs: rhs,
+            },
+        ));
+    }
     let (tail, (lhs, _, neg, rel, deco, _, rhs)) = tuple((
         expression,
         opt(whitespace),
@@ -685,8 +906,7 @@ fn relationship(input: &str) -> IResult<&str, Relationship> {
                 Some(_) => true,
                 None => false,
             },
-            relation: rel,
-            relation_decorations: deco,
+            relation: Decorated::new(rel, deco),
             rhs: rhs,
         },
     ))
@@ -694,6 +914,55 @@ fn relationship(input: &str) -> IResult<&str, Relationship> {
 
 #[test]
 fn test_relationship() {
+    assert_eq!(
+        relationship("x_n -> a => f(x_n) --(n -> oo)-> f(a)"),
+        Ok((
+            "",
+            Relationship {
+                lhs: Expression::DA(Box::new(Decorated {
+                    decoratee: Atom::Name("x".into()),
+                    decorations: Decorations {
+                        under: None,
+                        over: None,
+                        sup: None,
+                        sub: Some(Atom::Name("n".into())),
+                    }
+                })),
+                negated: false,
+                relation: Decorated::none(Relation::Tends),
+                rhs: Expression::R(Box::new(Relationship {
+                    lhs: Expression::A(Box::new(Atom::Name("a".into()))),
+                    negated: false,
+                    relation: Decorated::none(Relation::Implies),
+                    rhs: Expression::R(Box::new(Relationship {
+                        lhs: Expression::F(Box::new(FunctionCall {
+                            caller: Decorated::none(Atom::Name("f".into())),
+                            arguments: Expression::DA(Box::new(Decorated::sub(
+                                Atom::Name("x".into()),
+                                Atom::Name("n".into())
+                            )))
+                        })),
+                        relation: Decorated::sub(
+                            Relation::Tends,
+                            Atom::Group(Group::Parenthesized(Expression::R(Box::new(
+                                Relationship {
+                                    lhs: Expression::A(Box::new(Atom::Name("n".into()))),
+                                    relation: Decorated::none(Relation::Tends),
+                                    negated: false,
+                                    rhs: Expression::A(Box::new(Atom::Symbol(Symbol::Infinity))),
+                                }
+                            ))))
+                        ),
+                        negated: false,
+                        rhs: Expression::F(Box::new(FunctionCall {
+                            caller: Decorated::none(Atom::Name("f".into())),
+                            arguments: Expression::A(Box::new(Atom::Name("a".into())))
+                        }))
+                    })),
+                }))
+            }
+        ))
+    );
     assert_eq!(
         relationship("e !in E => f in F"),
         Ok((
@@ -703,34 +972,16 @@ fn test_relationship() {
                     lhs: Expression::A(Box::new(Atom::Name("e".into()))),
                     rhs: Expression::A(Box::new(Atom::Name("E".into()))),
                     negated: true,
-                    relation: Relation::ElementOf,
-                    relation_decorations: Decorations {
-                        sub: None,
-                        sup: None,
-                        under: None,
-                        over: None
-                    },
+                    relation: Decorated::none(Relation::ElementOf),
                 })),
                 rhs: Expression::R(Box::new(Relationship {
                     lhs: Expression::A(Box::new(Atom::Name("f".into()))),
                     rhs: Expression::A(Box::new(Atom::Name("F".into()))),
                     negated: false,
-                    relation: Relation::ElementOf,
-                    relation_decorations: Decorations {
-                        sub: None,
-                        sup: None,
-                        under: None,
-                        over: None
-                    },
+                    relation: Decorated::none(Relation::ElementOf),
                 })),
                 negated: false,
-                relation: Relation::Implies,
-                relation_decorations: Decorations {
-                    sub: None,
-                    sup: None,
-                    under: None,
-                    over: None
-                },
+                relation: Decorated::none(Relation::Implies),
             }
         ))
     )
@@ -762,7 +1013,7 @@ fn number(input: &str) -> IResult<&str, Number> {
 
 fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
     if !input.contains('.') {
-    eprintln!("trying _float_only_when_comma on {:?}", input);
+        eprintln!("trying _float_only_when_comma on {:?}", input);
         return Err(Err::Error(Error {
             code: ErrorKind::Char,
             input: "",
@@ -819,28 +1070,23 @@ fn test_atom() {
                 Relationship {
                     lhs: Expression::O(Box::new(Operation {
                         lhs: None,
-                        operator: Operator::Big(BigOperator::Integral),
-                        operator_decorations: Decorations {
-                            sub: Some(Atom::Number(Number::Integer(0))),
-                            sup: Some(Atom::Number(Number::Integer(0))),
-                            under: None,
-                            over: None
-                        },
-                        rhs: Some(Expression::O(Box::new(Operation {
-                            lhs: None,
-                            operator: Operator::Big(BigOperator::Sum),
-                            operator_decorations: Decorations {
-                                sub: None,
-                                sup: None,
+                        operator: Decorated::new(
+                            Operator::Big(BigOperator::Integral),
+                            Decorations {
+                                sub: Some(Atom::Number(Number::Integer(0))),
+                                sup: Some(Atom::Number(Number::Integer(0))),
                                 under: None,
                                 over: None
-                            },
+                            }
+                        ),
+                        rhs: Some(Expression::O(Box::new(Operation {
+                            lhs: None,
+                            operator: Decorated::none(Operator::Big(BigOperator::Sum)),
                             rhs: Some(Expression::A(Box::new(Atom::Name("e".into())))),
                         })))
                     })),
                     negated: false,
-                    relation: Relation::ElementOf,
-                    relation_decorations: None,
+                    relation: Decorated::none(Relation::ElementOf),
                     rhs: Expression::A(Box::new(Atom::Text(Text {
                         font: TextFont::BlackboardBold,
                         content: "R".into(),
@@ -1163,8 +1409,7 @@ fn operation(input: &str) -> IResult<&str, Operation> {
             tail,
             Operation {
                 lhs: Some(lhs),
-                operator: Operator::Binary(operator),
-                operator_decorations: decorations,
+                operator: Decorated::new(Operator::Binary(operator), decorations),
                 rhs: Some(rhs),
             },
         ))
@@ -1178,8 +1423,7 @@ fn operation(input: &str) -> IResult<&str, Operation> {
             tail,
             Operation {
                 lhs: None,
-                operator: Operator::Prefix(operator),
-                operator_decorations: decorations,
+                operator: Decorated::new(Operator::Prefix(operator), decorations),
                 rhs: Some(rhs),
             },
         ))
@@ -1193,8 +1437,7 @@ fn operation(input: &str) -> IResult<&str, Operation> {
             tail,
             Operation {
                 lhs: Some(lhs),
-                operator: Operator::Postfix(operator),
-                operator_decorations: decorations,
+                operator: Decorated::new(Operator::Postfix(operator), decorations),
                 rhs: None,
             },
         ))
@@ -1208,8 +1451,7 @@ fn operation(input: &str) -> IResult<&str, Operation> {
             tail,
             Operation {
                 lhs: None,
-                operator: Operator::Big(operator),
-                operator_decorations: decorations,
+                operator: Decorated::new(Operator::Big(operator), decorations),
                 rhs: Some(rhs),
             },
         ))
@@ -1257,9 +1499,8 @@ fn test_decorations() {
                     Relationship {
                         lhs: Expression::A(Box::new(Atom::Name("x".to_string()))),
                         rhs: Expression::A(Box::new(Atom::Number(Number::Integer(0)))),
-                        relation: Relation::Tends,
+                        relation: Decorated::none(Relation::Tends),
                         negated: false,
-                        relation_decorations: None,
                     }
                 ))))),
                 sup: None,
