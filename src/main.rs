@@ -362,6 +362,44 @@ enum Group {
     AngleBracketed(Expression),
 }
 
+impl EmitLatex for Group {
+    fn emit(&self) -> String {
+        "\\left".to_string()
+            + &match self {
+                Group::AbsoluteValue(s) => format!("|{}|", s.emit_keep_parens()),
+                Group::AngleBracketed(s) => format!(r#"langle{}\rangle"#, s.emit_keep_parens()),
+                Group::Braced(s) => format!(r#"\{{{}\}}"#, s.emit_keep_parens()),
+                Group::Bracketed(s) => format!("[{}]", s.emit_keep_parens()),
+                Group::LeftOpenIntegerRange(s) => {
+                    format!("\\rrbracket{}\\rrbracket", s.emit_keep_parens())
+                }
+                Group::LeftOpenRange(s) => format!("]{}]", s.emit_keep_parens()),
+                Group::Norm(s) => format!("\\|{}\\|", s.emit_keep_parens()),
+                Group::OpenIntegerRange(s) => {
+                    format!("\\rrbracket{}\\llbracket", s.emit_keep_parens())
+                }
+                Group::OpenRange(s) => format!("]{}[", s.emit_keep_parens()),
+                Group::Parenthesized(s) => format!("({})", s.emit_keep_parens()),
+                Group::RightOpenIntegerRange(s) => {
+                    format!("\\llbracket{}\\llbracket", s.emit_keep_parens())
+                }
+                Group::RightOpenRange(s) => format!("[{}[", s.emit_keep_parens()),
+                Group::WhiteBracketed(s) => {
+                    format!("\\llbracket{}\\rrbracket", s.emit_keep_parens())
+                }
+            }
+            + "\\right"
+    }
+}
+
+#[test]
+fn test_emit_group() {
+    assert_eq!(
+        Group::AngleBracketed(Expression::A(Box::new(Atom::Symbol(Symbol::Infinity)))).emit(),
+        r#"\left\langle\infty\rangle\right"#.to_string()
+    );
+}
+
 #[derive(Debug, PartialEq)]
 struct Quantity {
     value: Number,
@@ -652,6 +690,8 @@ enum Symbol {
     Aleph,
     Beth,
     Gimmel,
+    ProofEnd,
+    Contradiction,
 }
 
 #[derive(Debug, PartialEq)]
@@ -1643,6 +1683,10 @@ fn test_big_operator() {
             input: ""
         }))
     )
+}
+
+fn symbol(input: &str) -> Symbol {
+    match_enum_variants_to_literals(input, hashmap! {})
 }
 
 fn match_enum_variants_to_literals<'a, T>(
