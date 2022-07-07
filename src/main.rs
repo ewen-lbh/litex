@@ -4,12 +4,19 @@ use unicode_segmentation::UnicodeSegmentation;
 #[macro_use]
 extern crate maplit;
 use nom::branch::alt;
+use nom::character::is_alphabetic;
 use nom::bytes::complete::tag;
-use nom::character::complete::{alpha1, char, digit1};
+use nom::character::complete::{char, digit1};
 use nom::combinator::opt;
 use nom::error::{Error, ErrorKind, ParseError};
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::{Err, IResult};
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct InputState {
+    inside_operation: bool,
+    inside_relationship: bool,
+}
 
 // TODO custom derive macro to implement enum for PascalCase names as \camelCase (e.g. units)
 trait EmitLatex {
@@ -684,7 +691,7 @@ impl EmitLatex for Relation {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 enum Symbol {
     Infinity,
     Aleph,
@@ -841,12 +848,30 @@ impl EmitLatex for BigOperator {
     }
 }
 
-fn expression(input: &str) -> IResult<&str, Expression> {
+fn expression(state: InputState) -> impl Fn(&str) -> IResult<&str, Expression> {
+    move |input: &str| {
     eprintln!("trying expression on {:?}", input);
+    if let Ok((tail, q)) = quantification(state)(input) {
+        Ok((tail, Expression::Q(Box::new(q))))
+    } else if let Ok((tail, r)) = relationship(state)(input) {
+        Ok((tail, Expression::R(Box::new(r))))
+    } else if let Ok((tail, o)) = operation(state)(input) {
+        Ok((tail, Expression::O(Box::new(o))))
+    } else if let Ok((tail, a)) = atom(state)(input) {
+        Ok((tail, Expression::A(Box::new(a))))
+    } else {
+        Err(Err::Error(Error {
+            code: ErrorKind::Alt,
+            input: "",
+        }))
+    }
+}
+}
+
+fn expression_no_relationship(input: &str) -> IResult<&str, Expression> {
+    eprintln!("trying expression_no_relationship on {:?}", input);
     if let Ok((tail, q)) = quantification(input) {
         Ok((tail, Expression::Q(Box::new(q))))
-    } else if let Ok((tail, r)) = relationship(input) {
-        Ok((tail, Expression::R(Box::new(r))))
     } else if let Ok((tail, o)) = operation(input) {
         Ok((tail, Expression::O(Box::new(o))))
     } else if let Ok((tail, a)) = atom(input) {
@@ -859,17 +884,19 @@ fn expression(input: &str) -> IResult<&str, Expression> {
     }
 }
 
-fn quantification(input: &str) -> IResult<&str, Quantification> {
-    eprintln!("trying quantification on {:?}", input);
-    let (tail, (quantifier, decos, _, expr)) =
-        tuple((quantifier, decorations, whitespace, expression))(input)?;
-    Ok((
-        tail,
-        Quantification {
-            expression: expr,
-            quantifier: Decorated::new(quantifier, decos),
-        },
-    ))
+fn quantification(state: InputState) -> impl Fn(&str) -> IResult<&str, Quantification> {
+    move |input: &str| {
+        eprintln!("trying quantification on {:?}", input);
+        let (tail, (quantifier, decos, _, expr)) =
+            tuple((quantifier, decorations, whitespace, expression))(input)?;
+        Ok((
+            tail,
+            Quantification {
+                expression: expr,
+                quantifier: Decorated::new(quantifier, decos),
+            },
+        ))
+    }
 }
 
 fn quantifier(input: &str) -> IResult<&str, Quantifier> {
@@ -892,12 +919,12 @@ fn quantifier(input: &str) -> IResult<&str, Quantifier> {
     }
 }
 
-fn relationship(input: &str) -> IResult<&str, Relationship> {
-    eprintln!("trying relationship on {:?}", input);
+fn relationship(state: InputState) -> impl Fn(&str) -> IResult<&str, Relationship> {
+    move |input: &str| {    eprintln!("trying relationship on {:?}", input);
 
     // Special case to parse expr --(x->0)-> 4
     if let Ok((tail, (lhs, _, neg, _, pred, _, _, rhs))) = tuple((
-        expression,
+        expression_no_relationship,
         opt(whitespace),
         opt(alt((tag("not"), tag("!")))),
         tag("--"),
@@ -950,6 +977,7 @@ fn relationship(input: &str) -> IResult<&str, Relationship> {
             rhs: rhs,
         },
     ))
+}
 }
 
 #[test]
@@ -1072,20 +1100,33 @@ fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
     ))
 }
 
-fn atom(input: &str) -> IResult<&str, Atom, Error<&str>> {
+fn atom(state: InputState) -> impl Fn(&str) -> IResult<&str, Atom, Error<&str>> {
+    move |input: &str| {
     eprintln!("trying atom on {:?}", input);
     if let Ok((tail, txt)) = text(input) {
         Ok((tail, Atom::Text(txt)))
-    } else if let Ok((tail, name)) = alpha1::<_, Error<_>>(input) {
-        Ok((tail, Atom::Name(name.into())))
+    // } else if let Ok((tail, name)) = todo!::<_, Error<_>>(input) {
+    //     Ok((tail, Atom::Name(name.into())))
     } else if let Ok((tail, number)) = number(input) {
         Ok((tail, Atom::Number(number)))
     } else if let Ok((tail, qty)) = quantity(input) {
         Ok((tail, Atom::Quantity(qty)))
     } else if let Ok((tail, bare_op)) = binary_operator(input) {
         Ok((tail, Atom::BareOperator(bare_op)))
-    } else if let Ok((tail, grp)) = group(input) {
+    } else if let Ok((tail, grp)) = group(state)(input) {
         Ok((tail, Atom::Group(grp)))
+    } else {
+        Err(Err::Error(Error {
+            input: "",
+            code: ErrorKind::Alt,
+        }))
+    }
+}
+}
+
+fn atom_name(input: &str) -> IResult<&str, Atom> {
+    if is_alphabetic(input.chars().nth(0).unwrap_or('!')) {
+    Ok((tail, Atom::Name(name.into())))
     } else {
         Err(Err::Error(Error {
             input: "",
@@ -1224,7 +1265,8 @@ fn text_font(input: &str) -> IResult<&str, TextFont> {
     )
 }
 
-fn group(input: &str) -> IResult<&str, Group> {
+fn group(state: InputState) -> Fn(&str) -> IResult<&str, Group> {
+    move |input: &str| {
     eprintln!("trying group on {:?}", input);
     if let Ok((tail, expr)) = surrounded(expression, "{", "}", true)(input) {
         Ok((tail, Group::Braced(expr)))
@@ -1258,6 +1300,7 @@ fn group(input: &str) -> IResult<&str, Group> {
             input: "",
         }))
     }
+}
 }
 
 fn surrounded<'a, F: 'a, O, E: ParseError<&'a str>>(
@@ -1436,7 +1479,8 @@ fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
     )
 }
 
-fn operation(input: &str) -> IResult<&str, Operation> {
+fn operation(state: InputState) -> impl Fn(&str) -> IResult<&str, Operation> {
+    move |input: &str| {
     eprintln!("trying operation on {:?}", input);
     if let Ok((tail, (lhs, operator, decorations, rhs))) = tuple((
         terminated(expression, whitespace),
@@ -1500,6 +1544,7 @@ fn operation(input: &str) -> IResult<&str, Operation> {
             code: ErrorKind::Alt,
             input: "",
         }))
+    }
     }
 }
 
@@ -1685,8 +1730,18 @@ fn test_big_operator() {
     )
 }
 
-fn symbol(input: &str) -> Symbol {
-    match_enum_variants_to_literals(input, hashmap! {})
+fn symbol(input: &str) -> IResult<&str, Symbol> {
+    match_enum_variants_to_literals(input, hashmap! {
+        Symbol::Infinity => vec!["oo", "infinity", "∞"],
+        Symbol::Aleph => vec!["aleph"],
+        Symbol::Gimmel => vec!["gimmel"],
+        Symbol::ProofEnd => vec!["[]"], // notsure
+        Symbol::Contradiction => vec!["imp!", "contradiction"],
+    })
+}
+
+fn function_call(input: &str) -> IResult<&str, FunctionCall> {
+    let (tail, (name, expr)) = tuple((atom))
 }
 
 fn match_enum_variants_to_literals<'a, T>(
@@ -1712,5 +1767,7 @@ fn try_prefixes<'a>(input: &'a str, prefixes: Vec<&'a str>) -> Option<&'a str> {
     }
     None
 }
+
+
 
 fn main() {}
