@@ -4,9 +4,9 @@ use unicode_segmentation::UnicodeSegmentation;
 #[macro_use]
 extern crate maplit;
 use nom::branch::alt;
-use nom::character::is_alphabetic;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, digit1};
+use nom::character::is_alphabetic;
 use nom::combinator::opt;
 use nom::error::{Error, ErrorKind, ParseError};
 use nom::sequence::{delimited, preceded, terminated, tuple};
@@ -14,8 +14,9 @@ use nom::{Err, IResult};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct InputState {
-    inside_operation: bool,
-    inside_relationship: bool,
+    disable_operation: bool,
+    disable_relationship: bool,
+    call_depth: i32,
 }
 
 // TODO custom derive macro to implement enum for PascalCase names as \camelCase (e.g. units)
@@ -24,11 +25,11 @@ trait EmitLatex {
 }
 
 trait EmitLatexHasParens {
-    ///! should render (...) as ...
+    /// should render (...) as ...
     fn emit_throw_parens(&self) -> String;
-    ///! should render (...) as {...}
+    /// should render (...) as {...}
     fn emit_unwrap_parens(&self) -> String;
-    ///! should render (...) as \left(...\right)
+    /// should render (...) as \left(...\right)
     fn emit_keep_parens(&self) -> String;
 }
 
@@ -36,6 +37,7 @@ trait EmitLatexHasParens {
 enum Expression {
     Q(Box<Quantification>),
     R(Box<Relationship>),
+    FR(Box<FoldedRelationship>),
     A(Box<Atom>),
     DA(Box<Decorated<Atom>>),
     F(Box<FunctionCall>),
@@ -99,6 +101,7 @@ impl EmitLatexHasParens for Expression {
             Expression::O(inner) => inner.emit(),
             Expression::Q(inner) => inner.emit(),
             Expression::R(inner) => inner.emit(),
+            Expression::FR(inner) => inner.emit(),
             Expression::DA(inner) => inner.emit_keep_parens(),
             Expression::F(inner) => inner.emit(),
         }
@@ -108,6 +111,7 @@ impl EmitLatexHasParens for Expression {
             Expression::A(inner) => inner.emit_throw_parens(),
             Expression::O(inner) => inner.emit(),
             Expression::Q(inner) => inner.emit(),
+            Expression::FR(inner) => inner.emit(),
             Expression::R(inner) => inner.emit(),
             Expression::DA(inner) => inner.emit_throw_parens(),
             Expression::F(inner) => inner.emit(),
@@ -118,6 +122,7 @@ impl EmitLatexHasParens for Expression {
             Expression::A(inner) => inner.emit_unwrap_parens(),
             Expression::O(inner) => inner.emit(),
             Expression::Q(inner) => inner.emit(),
+            Expression::FR(inner) => inner.emit(),
             Expression::R(inner) => inner.emit(),
             Expression::DA(inner) => inner.emit_unwrap_parens(),
             Expression::F(inner) => inner.emit(),
@@ -269,6 +274,24 @@ impl EmitLatex for Relationship {
         format!(
             "{} {}{} {}",
             self.lhs.emit_keep_parens(),
+            if self.negated { "\\not" } else { "" },
+            self.relation.emit(),
+            self.rhs.emit_keep_parens()
+        )
+    }
+}
+
+#[derive(Debug, PartialEq)]
+struct FoldedRelationship {
+    relation: Decorated<Relation>,
+    negated: bool,
+    rhs: Expression,
+}
+
+impl EmitLatex for FoldedRelationship {
+    fn emit(&self) -> String {
+        format!(
+            "{}{} {}",
             if self.negated { "\\not" } else { "" },
             self.relation.emit(),
             self.rhs.emit_keep_parens()
@@ -765,6 +788,7 @@ enum PrefixOperator {
     Transposition,
     Complement,
     Negation,
+    Opposition,
 }
 
 impl EmitLatex for PrefixOperator {
@@ -773,6 +797,7 @@ impl EmitLatex for PrefixOperator {
             Self::Transposition => r#"\ {}^t"#,
             Self::Complement => r#"\ {}^c"#,
             Self::Negation => r#"\lnot"#,
+            Self::Opposition => "-",
         }
         .to_string()
     }
@@ -848,55 +873,61 @@ impl EmitLatex for BigOperator {
     }
 }
 
-fn expression(state: InputState) -> impl Fn(&str) -> IResult<&str, Expression> {
-    move |input: &str| {
-    eprintln!("trying expression on {:?}", input);
-    if let Ok((tail, q)) = quantification(state)(input) {
+fn expression(state: InputState, input: &str) -> IResult<&str, Expression> {
+    eprintln!(
+        "trying expression on {:?}, call depth is {:?}",
+        input, state.call_depth
+    );
+    let state = InputState {
+        disable_operation: state.disable_operation,
+        disable_relationship: state.disable_relationship,
+        call_depth: state.call_depth + 1,
+    };
+    if let Ok((tail, q)) = quantification(state, input) {
         Ok((tail, Expression::Q(Box::new(q))))
-    } else if let Ok((tail, r)) = relationship(state)(input) {
+    } else if let Ok((tail, r)) = relationship(state, input) {
         Ok((tail, Expression::R(Box::new(r))))
-    } else if let Ok((tail, o)) = operation(state)(input) {
+    } else if let Ok((tail, o)) = operation(state, input) {
         Ok((tail, Expression::O(Box::new(o))))
-    } else if let Ok((tail, a)) = atom(state)(input) {
+    } else if let Ok((tail, f)) = function_call(state, input) {
+        Ok((tail, Expression::F(Box::new(f))))
+    } else if let Ok((tail, da)) = decorated(move |i| atom(state, i))(input) {
+        Ok((tail, Expression::DA(Box::new(da))))
+    } else if let Ok((tail, a)) = atom(state, input) {
         Ok((tail, Expression::A(Box::new(a))))
+    } else if let Ok((tail, fr)) = folded_relationship(input) {
+        Ok((tail, Expression::FR(Box::new(fr))))
     } else {
+        // if state.disable_operation || state.disable_relationship {
+        //     eprintln!("== retrying unrestricted expression");
+        //     return expression(
+        //         InputState {
+        //             disable_operation: false,
+        //             disable_relationship: false,
+        //             call_depth: state.call_depth,
+        //         },
+        //         input,
+        //     );
+        // }
         Err(Err::Error(Error {
             code: ErrorKind::Alt,
             input: "",
         }))
     }
 }
-}
 
-fn expression_no_relationship(input: &str) -> IResult<&str, Expression> {
-    eprintln!("trying expression_no_relationship on {:?}", input);
-    if let Ok((tail, q)) = quantification(input) {
-        Ok((tail, Expression::Q(Box::new(q))))
-    } else if let Ok((tail, o)) = operation(input) {
-        Ok((tail, Expression::O(Box::new(o))))
-    } else if let Ok((tail, a)) = atom(input) {
-        Ok((tail, Expression::A(Box::new(a))))
-    } else {
-        Err(Err::Error(Error {
-            code: ErrorKind::Alt,
-            input: "",
-        }))
-    }
-}
-
-fn quantification(state: InputState) -> impl Fn(&str) -> IResult<&str, Quantification> {
-    move |input: &str| {
-        eprintln!("trying quantification on {:?}", input);
-        let (tail, (quantifier, decos, _, expr)) =
-            tuple((quantifier, decorations, whitespace, expression))(input)?;
-        Ok((
-            tail,
-            Quantification {
-                expression: expr,
-                quantifier: Decorated::new(quantifier, decos),
-            },
-        ))
-    }
+fn quantification(state: InputState, input: &str) -> IResult<&str, Quantification> {
+    eprintln!("trying quantification on {:?}", input);
+    let expression = |i| expression(state, i);
+    let (tail, (quantifier, decos, _, expr)) =
+        tuple((quantifier, decorations, whitespace, expression))(input)?;
+    Ok((
+        tail,
+        Quantification {
+            expression: expr,
+            quantifier: Decorated::new(quantifier, decos),
+        },
+    ))
 }
 
 fn quantifier(input: &str) -> IResult<&str, Quantifier> {
@@ -919,10 +950,51 @@ fn quantifier(input: &str) -> IResult<&str, Quantifier> {
     }
 }
 
-fn relationship(state: InputState) -> impl Fn(&str) -> IResult<&str, Relationship> {
-    move |input: &str| {    eprintln!("trying relationship on {:?}", input);
+fn folded_relationship(input: &str) -> IResult<&str, FoldedRelationship> {
+    eprintln!("trying folded_relationship on {:?}", input);
+    let state = InputState {
+        disable_operation: false,
+        disable_relationship: true,
+        call_depth: 0,
+    };
+    let expression = |i| expression(state, i);
+    let (tail, (_, neg, rel, _, rhs)) = tuple((
+        opt(whitespace),
+        opt(alt((tag("not"), tag("!")))),
+        decorated(relation),
+        opt(whitespace),
+        expression,
+    ))(input)?;
+    Ok((
+        tail,
+        FoldedRelationship {
+            relation: rel,
+            negated: match neg {
+                Some(_) => true,
+                None => false,
+            },
+            rhs: rhs,
+        },
+    ))
+}
 
+fn relationship(state: InputState, input: &str) -> IResult<&str, Relationship> {
+    if state.disable_relationship {
+        return Err(Err::Error(Error {
+            input: input,
+            code: ErrorKind::IsNot,
+        }));
+    }
+    eprintln!("trying relationship on {:?}", input);
+    let expression_no_relationship = |i| expression(InputState {
+        disable_operation: state.disable_operation,
+        disable_relationship: true,
+        call_depth: state.call_depth,
+    }, i);
+    let expression_relationship = |i| expression(state, i);
+    let atom = |i| atom(state, i);
     // Special case to parse expr --(x->0)-> 4
+    eprintln!("    trying --(->)-> special case");
     if let Ok((tail, (lhs, _, neg, _, pred, _, _, rhs))) = tuple((
         expression_no_relationship,
         opt(whitespace),
@@ -931,7 +1003,7 @@ fn relationship(state: InputState) -> impl Fn(&str) -> IResult<&str, Relationshi
         atom,
         tag("->"),
         opt(whitespace),
-        expression,
+        expression_relationship,
     ))(input)
     {
         return Ok((
@@ -955,14 +1027,15 @@ fn relationship(state: InputState) -> impl Fn(&str) -> IResult<&str, Relationshi
             },
         ));
     }
+    println!("     trying regular");
     let (tail, (lhs, _, neg, rel, deco, _, rhs)) = tuple((
-        expression,
+        expression_no_relationship,
         opt(whitespace),
         opt(alt((tag("not"), tag("!")))),
         relation,
         decorations,
         opt(whitespace),
-        expression,
+        expression_relationship,
     ))(input)?;
 
     Ok((
@@ -978,12 +1051,16 @@ fn relationship(state: InputState) -> impl Fn(&str) -> IResult<&str, Relationshi
         },
     ))
 }
-}
 
 #[test]
 fn test_relationship() {
+    let state = InputState {
+        disable_operation: false,
+        disable_relationship: false,
+        call_depth: 0,
+    };
     assert_eq!(
-        relationship("x_n -> a => f(x_n) --(n -> oo)-> f(a)"),
+        relationship(state, "x_n -> a => f(x_n) --(n -> oo)-> f(a)"),
         Ok((
             "",
             Relationship {
@@ -1032,7 +1109,7 @@ fn test_relationship() {
         ))
     );
     assert_eq!(
-        relationship("e !in E => f in F"),
+        relationship(state, "e !in E => f in F"),
         Ok((
             "",
             Relationship {
@@ -1100,20 +1177,21 @@ fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
     ))
 }
 
-fn atom(state: InputState) -> impl Fn(&str) -> IResult<&str, Atom, Error<&str>> {
-    move |input: &str| {
+fn atom(state: InputState, input: &str) -> IResult<&str, Atom, Error<&str>> {
     eprintln!("trying atom on {:?}", input);
     if let Ok((tail, txt)) = text(input) {
         Ok((tail, Atom::Text(txt)))
-    // } else if let Ok((tail, name)) = todo!::<_, Error<_>>(input) {
-    //     Ok((tail, Atom::Name(name.into())))
     } else if let Ok((tail, number)) = number(input) {
         Ok((tail, Atom::Number(number)))
     } else if let Ok((tail, qty)) = quantity(input) {
         Ok((tail, Atom::Quantity(qty)))
     } else if let Ok((tail, bare_op)) = binary_operator(input) {
         Ok((tail, Atom::BareOperator(bare_op)))
-    } else if let Ok((tail, grp)) = group(state)(input) {
+    } else if let Ok((tail, symb)) = symbol(input) {
+        Ok((tail, Atom::Symbol(symb)))
+    } else if let Ok((tail, name)) = name(input) {
+        Ok((tail, Atom::Name(name)))
+    } else if let Ok((tail, grp)) = group(state, input) {
         Ok((tail, Atom::Group(grp)))
     } else {
         Err(Err::Error(Error {
@@ -1122,29 +1200,43 @@ fn atom(state: InputState) -> impl Fn(&str) -> IResult<&str, Atom, Error<&str>> 
         }))
     }
 }
-}
 
-fn atom_name(input: &str) -> IResult<&str, Atom> {
-    if is_alphabetic(input.chars().nth(0).unwrap_or('!')) {
-    Ok((tail, Atom::Name(name.into())))
-    } else {
-        Err(Err::Error(Error {
-            input: "",
-            code: ErrorKind::Alt,
-        }))
+fn name(input: &str) -> IResult<&str, String> {
+    eprintln!("trying name on {:?}", input);
+    let mut matched = String::from("");
+    for grapheme in input.graphemes(true) {
+        eprintln!("               current grapheme is {:?}", grapheme);
+        if grapheme.chars().any(|c| c.is_alphabetic()) {
+            matched += grapheme;
+        } else {
+            return if matched.len() == 0 {
+                Err(Err::Error(Error {
+                    input: input,
+                    code: ErrorKind::Alpha,
+                }))
+            } else {
+                Ok((&input[matched.len()..], matched))
+            };
+        }
     }
+    Ok(("", matched))
 }
 
 #[test]
 fn test_atom() {
-    assert_eq!(atom("alpha"), Ok(("", Atom::Name("alpha".into()))));
-    assert_eq!(atom("abc87"), Ok(("87", Atom::Name("abc".into()))));
+    let state = InputState {
+        disable_operation: false,
+        disable_relationship: false,
+        call_depth: 0,
+    };
+    assert_eq!(atom(state, "alpha"), Ok(("", Atom::Name("alpha".into()))));
+    assert_eq!(atom(state, "abc87"), Ok(("87", Atom::Name("abc".into()))));
     assert_eq!(
-        atom("65486.848pal"),
+        atom(state, "65486.848pal"),
         Ok(("pal", Atom::Number(Number::Float(65486.848))))
     );
     assert_eq!(
-        atom(r#"(int_0^1 sum e in o"R") not= _|_"#),
+        atom(state, r#"(int_0^1 sum e in o"R") not= _|_"#),
         Ok((
             " not= _|_",
             Atom::Group(Group::Parenthesized(Expression::R(Box::new(
@@ -1265,9 +1357,9 @@ fn text_font(input: &str) -> IResult<&str, TextFont> {
     )
 }
 
-fn group(state: InputState) -> Fn(&str) -> IResult<&str, Group> {
-    move |input: &str| {
+fn group(state: InputState, input: &str) -> IResult<&str, Group> {
     eprintln!("trying group on {:?}", input);
+    let expression = move |i| expression(state, i);
     if let Ok((tail, expr)) = surrounded(expression, "{", "}", true)(input) {
         Ok((tail, Group::Braced(expr)))
     } else if let Ok((tail, expr)) = surrounded(expression, "(", ")", true)(input) {
@@ -1301,7 +1393,6 @@ fn group(state: InputState) -> Fn(&str) -> IResult<&str, Group> {
         }))
     }
 }
-}
 
 fn surrounded<'a, F: 'a, O, E: ParseError<&'a str>>(
     f: F,
@@ -1313,6 +1404,22 @@ where
     F: Fn(&'a str) -> IResult<&'a str, O, E>,
 {
     move |input| delimited(tag(opening), &f, tag(closing))(input)
+}
+
+fn decorated<'a, F: 'a, O>(f: F) -> impl Fn(&'a str) -> IResult<&'a str, Decorated<O>>
+where
+    F: Fn(&'a str) -> IResult<&'a str, O>,
+{
+    move |input| match tuple((&f, decorations))(input) {
+        Ok((tail, (thing, decorations))) => Ok((
+            tail,
+            Decorated {
+                decoratee: thing,
+                decorations: decorations,
+            },
+        )),
+        Err(e) => Err(e),
+    }
 }
 
 fn whitespace(input: &str) -> IResult<&str, &str> {
@@ -1383,7 +1490,17 @@ fn unit(input: &str) -> IResult<&str, Unit> {
 
 fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
     eprintln!("trying _unit_no_bin_op on {:?}", input);
-    if let Ok((tail, (u, _, pow))) = tuple((_unit_no_op, char('^'), atom))(input) {
+    if let Ok((tail, (u, _, pow))) = tuple((_unit_no_op, char('^'), |i| {
+        atom(
+            InputState {
+                disable_operation: false,
+                disable_relationship: false,
+                call_depth: 0,
+            },
+            i,
+        )
+    }))(input)
+    {
         Ok((tail, Unit::Power(Box::new(u), pow)))
     } else {
         _unit_no_op(input)
@@ -1479,14 +1596,25 @@ fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
     )
 }
 
-fn operation(state: InputState) -> impl Fn(&str) -> IResult<&str, Operation> {
-    move |input: &str| {
+fn operation(state: InputState, input: &str) -> IResult<&str, Operation> {
+    if state.disable_operation {
+        return Err(Err::Error(Error {
+            input: input,
+            code: ErrorKind::IsNot,
+        }));
+    }
+    let expression_no_operation = move |i| expression(InputState {
+        disable_operation: true,
+        disable_relationship: state.disable_relationship,
+        call_depth: state.call_depth,
+    }, i);
+    let expression_operation = move |i| expression(state, i);
     eprintln!("trying operation on {:?}", input);
     if let Ok((tail, (lhs, operator, decorations, rhs))) = tuple((
-        terminated(expression, whitespace),
+        terminated(expression_no_operation, whitespace),
         binary_operator,
         decorations,
-        preceded(whitespace, expression),
+        preceded(whitespace, expression_operation),
     ))(input)
     {
         Ok((
@@ -1500,7 +1628,7 @@ fn operation(state: InputState) -> impl Fn(&str) -> IResult<&str, Operation> {
     } else if let Ok((tail, (operator, decorations, rhs))) = tuple((
         preceded(whitespace, prefix_operator),
         decorations,
-        terminated(expression, whitespace),
+        terminated(expression_operation, whitespace),
     ))(input)
     {
         Ok((
@@ -1512,7 +1640,7 @@ fn operation(state: InputState) -> impl Fn(&str) -> IResult<&str, Operation> {
             },
         ))
     } else if let Ok((tail, (lhs, operator, decorations))) = tuple((
-        preceded(whitespace, expression),
+        preceded(whitespace, expression_operation),
         postfix_operator,
         terminated(decorations, whitespace),
     ))(input)
@@ -1528,7 +1656,7 @@ fn operation(state: InputState) -> impl Fn(&str) -> IResult<&str, Operation> {
     } else if let Ok((tail, (operator, decorations, rhs))) = tuple((
         big_operator,
         decorations,
-        terminated(expression, whitespace),
+        terminated(expression_operation, whitespace),
     ))(input)
     {
         Ok((
@@ -1545,11 +1673,20 @@ fn operation(state: InputState) -> impl Fn(&str) -> IResult<&str, Operation> {
             input: "",
         }))
     }
-    }
 }
 
 fn decorations(input: &str) -> IResult<&str, Decorations> {
     eprintln!("trying decorations on {:?}", input);
+    let atom = |i| {
+        atom(
+            InputState {
+                disable_operation: false,
+                disable_relationship: false,
+                call_depth: 0,
+            },
+            i,
+        )
+    };
     let (tail, (under, over, sub, sup)) = tuple((
         opt(preceded(tag("__"), atom)),
         opt(preceded(tag("^^"), atom)),
@@ -1578,12 +1715,18 @@ fn test_decorations() {
                 under: Some(Atom::Number(Number::Integer(8))),
                 over: Some(Atom::Text(Text {
                     font: TextFont::Monospace,
-                    content: String::from("good stuff right there!!! amirite^4???")
+                    content: String::from("good stuff right therre!!! amirite^4???")
                 })),
                 sub: Some(Atom::Group(Group::Parenthesized(Expression::R(Box::new(
                     Relationship {
-                        lhs: Expression::A(Box::new(Atom::Name("x".to_string()))),
-                        rhs: Expression::A(Box::new(Atom::Number(Number::Integer(0)))),
+                        lhs: Expression::DA(Box::new(Decorated {
+                            decoratee: Atom::Name("x".to_string()),
+                            decorations: Decorations::none(),
+                        })),
+                        rhs: Expression::DA(Box::new(Decorated {
+                            decoratee: Atom::Number(Number::Integer(0)),
+                            decorations: Decorations::none(),
+                        })),
                         relation: Decorated::none(Relation::Tends),
                         negated: false,
                     }
@@ -1600,6 +1743,8 @@ fn relation(input: &str) -> IResult<&str, Relation> {
         input,
         hashmap! {
             Relation::Equals => vec!["="],
+            Relation::Tends => vec!["->"],
+            Relation::Implies => vec!["=>"],
         },
     )
 }
@@ -1731,17 +1876,30 @@ fn test_big_operator() {
 }
 
 fn symbol(input: &str) -> IResult<&str, Symbol> {
-    match_enum_variants_to_literals(input, hashmap! {
-        Symbol::Infinity => vec!["oo", "infinity", "∞"],
-        Symbol::Aleph => vec!["aleph"],
-        Symbol::Gimmel => vec!["gimmel"],
-        Symbol::ProofEnd => vec!["[]"], // notsure
-        Symbol::Contradiction => vec!["imp!", "contradiction"],
-    })
+    match_enum_variants_to_literals(
+        input,
+        hashmap! {
+            Symbol::Infinity => vec!["oo", "infinity", "∞"],
+            Symbol::Aleph => vec!["aleph"],
+            Symbol::Gimmel => vec!["gimmel"],
+            Symbol::ProofEnd => vec!["[]"], // notsure
+            Symbol::Contradiction => vec!["imp!", "contradiction"],
+        },
+    )
 }
 
-fn function_call(input: &str) -> IResult<&str, FunctionCall> {
-    let (tail, (name, expr)) = tuple((atom))
+fn function_call(state: InputState, input: &str) -> IResult<&str, FunctionCall> {
+    let atom = move |i| atom(state, i);
+    let expression = move |i| expression(state, i);
+    let (tail, (name, expr)) =
+        tuple((decorated(atom), surrounded(expression, "(", ")", true)))(input)?;
+    Ok((
+        tail,
+        FunctionCall {
+            caller: name,
+            arguments: expr,
+        },
+    ))
 }
 
 fn match_enum_variants_to_literals<'a, T>(
@@ -1767,7 +1925,5 @@ fn try_prefixes<'a>(input: &'a str, prefixes: Vec<&'a str>) -> Option<&'a str> {
     }
     None
 }
-
-
 
 fn main() {}
