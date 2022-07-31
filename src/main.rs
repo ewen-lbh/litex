@@ -1,8 +1,5 @@
 use nom::number::complete::float;
-use std::collections::HashMap;
 use unicode_segmentation::UnicodeSegmentation;
-#[macro_use]
-extern crate maplit;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, digit1};
@@ -1342,18 +1339,18 @@ fn text_font(input: &str) -> IResult<&str, TextFont> {
     eprintln!("trying text_font on {:?}", input);
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            TextFont::Caligraphic => vec!["c"],
-            TextFont::Fraktur => vec!["f"],
-            TextFont::BlackboardBold => vec!["o", "bb"],
-            TextFont::Bold => vec!["b"],
-            TextFont::Sans => vec!["s"],
-            TextFont::Monospace => vec!["m", "tt"],
-            TextFont::Normal => vec!["n"],
-            TextFont::Italic => vec!["i"],
-            TextFont::Script => vec!["s"],
-            TextFont::MathOperator => vec!["op"],
-        },
+        vec![
+            (TextFont::Caligraphic, vec!["c"]),
+            (TextFont::Fraktur, vec!["f"]),
+            (TextFont::BlackboardBold, vec!["o", "bb"]),
+            (TextFont::Bold, vec!["b"]),
+            (TextFont::Sans, vec!["s"]),
+            (TextFont::Monospace, vec!["m", "tt"]),
+            (TextFont::Normal, vec!["n"]),
+            (TextFont::Italic, vec!["i"]),
+            (TextFont::Script, vec!["s"]),
+            (TextFont::MathOperator, vec!["op"]),
+        ],
     )
 }
 
@@ -1545,20 +1542,20 @@ fn unit_prefix(input: &str) -> IResult<&str, UnitPrefix> {
     eprintln!("trying unit_prefix on {:?}", input);
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            UnitPrefix::Nano => vec!["n"],
-            UnitPrefix::Micro => vec!["µ", "micro", "mu"],
-            UnitPrefix::Deca => vec!["da"],
-            UnitPrefix::Milli => vec!["m"],
-            UnitPrefix::Deci => vec!["d"],
-            UnitPrefix::Centi => vec!["c"],
-            UnitPrefix::Hecto => vec!["h"],
-            UnitPrefix::Kilo => vec!["k"],
-            UnitPrefix::Mega => vec!["M"],
-            UnitPrefix::Giga => vec!["G"],
-            UnitPrefix::Tera => vec!["T"],
-            UnitPrefix::Peta => vec!["P"],
-        },
+        vec![
+            (UnitPrefix::Nano, vec!["n"]),
+            (UnitPrefix::Micro, vec!["µ", "micro", "mu"]),
+            (UnitPrefix::Deca, vec!["da"]),
+            (UnitPrefix::Milli, vec!["m"]),
+            (UnitPrefix::Deci, vec!["d"]),
+            (UnitPrefix::Centi, vec!["c"]),
+            (UnitPrefix::Hecto, vec!["h"]),
+            (UnitPrefix::Kilo, vec!["k"]),
+            (UnitPrefix::Mega, vec!["M"]),
+            (UnitPrefix::Giga, vec!["G"]),
+            (UnitPrefix::Tera, vec!["T"]),
+            (UnitPrefix::Peta, vec!["P"]),
+        ],
     )
 }
 
@@ -1566,33 +1563,33 @@ fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
     eprintln!("trying fundamental_unit on {:?}", input);
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            FundamentalUnit::CelsisusDegree => vec!["°C", "°c"],
-            FundamentalUnit::FarenheitDegree => vec!["°F"],
-            FundamentalUnit::FrenchDegree => vec!["°fH", "°f"],
-            FundamentalUnit::Degree => vec!["°"],
-            FundamentalUnit::Radian => vec!["rad"],
-            FundamentalUnit::MeterOfHydrogen => vec!["mHg"],
-            FundamentalUnit::Meter => vec!["m"],
-            FundamentalUnit::Gram => vec!["g"],
-            FundamentalUnit::Mole => vec!["mol"],
-            FundamentalUnit::Second => vec!["s"],
-            FundamentalUnit::Kelvin => vec!["K"],
-            FundamentalUnit::Liter => vec!["L"],
-            FundamentalUnit::Farad => vec!["F"],
-            FundamentalUnit::Henry => vec!["H"],
-            FundamentalUnit::ElectronVolt => vec!["eV"],
-            FundamentalUnit::Lux => vec!["lux"],
-            FundamentalUnit::Ampere => vec!["A"],
-            FundamentalUnit::Volt => vec!["V"],
-            FundamentalUnit::Ohm => vec!["Ohm", "ohm", "Ω"],
-            FundamentalUnit::Bar => vec!["bar"],
-            FundamentalUnit::Atmosphere => vec!["atm"],
-            FundamentalUnit::Pascal => vec!["Pa"],
-            FundamentalUnit::Joule => vec!["J"],
-            FundamentalUnit::Watt => vec!["W"],
-            FundamentalUnit::Siemens => vec!["S"],
-        },
+        vec![
+            (FundamentalUnit::CelsisusDegree, vec!["°C", "°c"]),
+            (FundamentalUnit::FarenheitDegree, vec!["°F"]),
+            (FundamentalUnit::FrenchDegree, vec!["°fH", "°f"]),
+            (FundamentalUnit::Degree, vec!["°"]),
+            (FundamentalUnit::Radian, vec!["rad"]),
+            (FundamentalUnit::MeterOfHydrogen, vec!["mHg"]),
+            (FundamentalUnit::Meter, vec!["m"]),
+            (FundamentalUnit::Gram, vec!["g"]),
+            (FundamentalUnit::Mole, vec!["mol"]),
+            (FundamentalUnit::Second, vec!["s"]),
+            (FundamentalUnit::Kelvin, vec!["K"]),
+            (FundamentalUnit::Liter, vec!["L"]),
+            (FundamentalUnit::Farad, vec!["F"]),
+            (FundamentalUnit::Henry, vec!["H"]),
+            (FundamentalUnit::ElectronVolt, vec!["eV"]),
+            (FundamentalUnit::Lux, vec!["lux"]),
+            (FundamentalUnit::Ampere, vec!["A"]),
+            (FundamentalUnit::Volt, vec!["V"]),
+            (FundamentalUnit::Ohm, vec!["Ohm", "ohm", "Ω"]),
+            (FundamentalUnit::Bar, vec!["bar"]),
+            (FundamentalUnit::Atmosphere, vec!["atm"]),
+            (FundamentalUnit::Pascal, vec!["Pa"]),
+            (FundamentalUnit::Joule, vec!["J"]),
+            (FundamentalUnit::Watt, vec!["W"]),
+            (FundamentalUnit::Siemens, vec!["S"]),
+        ],
     )
 }
 
@@ -1741,11 +1738,29 @@ fn relation(input: &str) -> IResult<&str, Relation> {
     eprintln!("trying relation on {:?}", input);
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            Relation::Equals => vec!["="],
-            Relation::Tends => vec!["->"],
-            Relation::Implies => vec!["=>"],
-        },
+        vec![
+            (Relation::Implies, vec!["=>", "⇒"]),
+            (Relation::Iff, vec!["<=>", "⇔", "iff"]),
+            (Relation::ImpliedBy, vec!["⇐", "=<", "impliedby"]),
+            (
+                Relation::Congruent,
+                vec!["=-", "-=", "==", "congruent", "cong", "congru"],
+            ),
+            (Relation::MapsTo, vec!["|->", "↦", "mapsto"]),
+            (Relation::GreaterOrEqual, vec![">=", "≥"]),
+            (Relation::LessOrEqual, vec!["<=", "≤"]),
+            (Relation::Equals, vec!["="]),
+            (Relation::Greater, vec![">"]),
+            (Relation::Less, vec!["<"]),
+            (Relation::Tends, vec!["->"]),
+            (Relation::Subset, vec!["subset", "included", "cc", "⊂"]),
+            (
+                Relation::Superset,
+                vec!["supset", "superset", "includes", "))", "⊃"],
+            ),
+            (Relation::ElementOf, vec!["in", "∈", "€"]),
+            (Relation::EquivalentTo, vec!["~"]),
+        ],
     )
 }
 
@@ -1769,12 +1784,7 @@ fn operator(input: &str) -> IResult<&str, Operator> {
 
 fn binary_operator(input: &str) -> IResult<&str, BinaryOperator> {
     eprintln!("trying binary_operator on {:?}", input);
-    match_enum_variants_to_literals(
-        input,
-        hashmap! {
-            BinaryOperator::Addition => vec!["+"]
-        },
-    )
+    match_enum_variants_to_literals(input, vec![(BinaryOperator::Addition, vec!["+"])])
 }
 
 #[test]
@@ -1793,11 +1803,17 @@ fn prefix_operator(input: &str) -> IResult<&str, PrefixOperator> {
     eprintln!("trying prefix_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            PrefixOperator::Transposition => vec!["^t", "trans", "transpose"],
-            PrefixOperator::Complement => vec!["^c", "^C", "compl", "complement"],
-            PrefixOperator::Negation => vec!["¬", "not", "-,", "negate"]
-        },
+        vec![
+            (
+                PrefixOperator::Transposition,
+                vec!["^t", "trans", "transpose"],
+            ),
+            (
+                PrefixOperator::Complement,
+                vec!["^c", "^C", "compl", "complement"],
+            ),
+            (PrefixOperator::Negation, vec!["¬", "not", "-,", "negate"]),
+        ],
     )
 }
 
@@ -1820,11 +1836,14 @@ fn postfix_operator(input: &str) -> IResult<&str, PostfixOperator> {
     eprintln!("trying postfix_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            PostfixOperator::VectorMarker => vec!["->"],
-            PostfixOperator::Orthogonal => vec!["^_|_", "^bot", "^orthog", "^orth", "^perp", "^orthogonal"],
-            PostfixOperator::Factorial => vec!["!"],
-        },
+        vec![
+            (PostfixOperator::VectorMarker, vec!["->"]),
+            (
+                PostfixOperator::Orthogonal,
+                vec!["^_|_", "^bot", "^orthog", "^orth", "^perp", "^orthogonal"],
+            ),
+            (PostfixOperator::Factorial, vec!["!"]),
+        ],
     )
 }
 
@@ -1844,13 +1863,16 @@ fn big_operator(input: &str) -> IResult<&str, BigOperator> {
     eprintln!("trying big_operator on {:?}", input);
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            BigOperator::Sum => vec!["sum", "Sum", "∑"],
-            BigOperator::Product => vec!["Product"],
-            BigOperator::Coproduct => vec!["Coproduct"],
-            BigOperator::Integral => vec!["int", "integral", "Integral", "∫"],
-            BigOperator::Limit => vec!["lim", "Limit", "limit"],
-        },
+        vec![
+            (BigOperator::Sum, vec!["sum", "Sum", "∑"]),
+            (BigOperator::Product, vec!["Product"]),
+            (BigOperator::Coproduct, vec!["Coproduct"]),
+            (
+                BigOperator::Integral,
+                vec!["int", "integral", "Integral", "∫"],
+            ),
+            (BigOperator::Limit, vec!["lim", "Limit", "limit"]),
+        ],
     )
 }
 
@@ -1878,13 +1900,13 @@ fn test_big_operator() {
 fn symbol(input: &str) -> IResult<&str, Symbol> {
     match_enum_variants_to_literals(
         input,
-        hashmap! {
-            Symbol::Infinity => vec!["oo", "infinity", "∞"],
-            Symbol::Aleph => vec!["aleph"],
-            Symbol::Gimmel => vec!["gimmel"],
-            Symbol::ProofEnd => vec!["[]"], // notsure
-            Symbol::Contradiction => vec!["imp!", "contradiction"],
-        },
+        vec![
+            (Symbol::Infinity, vec!["oo", "infinity", "∞"]),
+            (Symbol::Aleph, vec!["aleph"]),
+            (Symbol::Gimmel, vec!["gimmel"]),
+            (Symbol::ProofEnd, vec!["[]"]), // notsure
+            (Symbol::Contradiction, vec!["imp!", "contradiction"]),
+        ],
     )
 }
 
@@ -1904,7 +1926,7 @@ fn function_call(state: InputState, input: &str) -> IResult<&str, FunctionCall> 
 
 fn match_enum_variants_to_literals<'a, T>(
     input: &'a str,
-    mapping: HashMap<T, Vec<&'a str>>,
+    mapping: Vec<(T, Vec<&'a str>)>,
 ) -> IResult<&'a str, T> {
     for (variant, literals) in mapping {
         if let Some(tail) = try_prefixes(input, literals) {
