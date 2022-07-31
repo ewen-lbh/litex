@@ -8,6 +8,8 @@ use nom::combinator::opt;
 use nom::error::{Error, ErrorKind, ParseError};
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::{Err, IResult};
+#[cfg(test)]
+use pretty_assertions::assert_eq;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct InputState {
