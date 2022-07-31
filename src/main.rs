@@ -1,15 +1,14 @@
-use nom::number::complete::float;
-use unicode_segmentation::UnicodeSegmentation;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{char, digit1};
-use nom::character::is_alphabetic;
 use nom::combinator::opt;
 use nom::error::{Error, ErrorKind, ParseError};
+use nom::number::complete::float;
 use nom::sequence::{delimited, preceded, terminated, tuple};
 use nom::{Err, IResult};
 #[cfg(test)]
 use pretty_assertions::assert_eq;
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct InputState {
@@ -985,11 +984,16 @@ fn relationship(state: InputState, input: &str) -> IResult<&str, Relationship> {
         }));
     }
     eprintln!("trying relationship on {:?}", input);
-    let expression_no_relationship = |i| expression(InputState {
-        disable_operation: state.disable_operation,
-        disable_relationship: true,
-        call_depth: state.call_depth,
-    }, i);
+    let expression_no_relationship = |i| {
+        expression(
+            InputState {
+                disable_operation: state.disable_operation,
+                disable_relationship: true,
+                call_depth: state.call_depth,
+            },
+            i,
+        )
+    };
     let expression_relationship = |i| expression(state, i);
     let atom = |i| atom(state, i);
     // Special case to parse expr --(x->0)-> 4
@@ -1090,17 +1094,23 @@ fn test_relationship() {
                             Relation::Tends,
                             Atom::Group(Group::Parenthesized(Expression::R(Box::new(
                                 Relationship {
-                                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("n".into())))),
+                                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name(
+                                        "n".into()
+                                    )))),
                                     relation: Decorated::none(Relation::Tends),
                                     negated: false,
-                                    rhs: Expression::DA(Box::new(Decorated::none(Atom::Symbol(Symbol::Infinity)))),
+                                    rhs: Expression::DA(Box::new(Decorated::none(Atom::Symbol(
+                                        Symbol::Infinity
+                                    )))),
                                 }
                             ))))
                         ),
                         negated: false,
                         rhs: Expression::F(Box::new(FunctionCall {
                             caller: Decorated::none(Atom::Name("f".into())),
-                            arguments: Expression::DA(Box::new(Decorated::none(Atom::Name("a".into()))))
+                            arguments: Expression::DA(Box::new(Decorated::none(Atom::Name(
+                                "a".into()
+                            ))))
                         }))
                     })),
                 }))
@@ -1112,20 +1122,20 @@ fn test_relationship() {
         Ok((
             "",
             Relationship {
-                lhs: Expression::R(Box::new(Relationship {
-                    lhs: Expression::A(Box::new(Atom::Name("e".into()))),
-                    rhs: Expression::A(Box::new(Atom::Name("E".into()))),
-                    negated: true,
-                    relation: Decorated::none(Relation::ElementOf),
-                })),
+                lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("e".into())))),
+                relation: Decorated::none(Relation::ElementOf),
+                negated: true,
                 rhs: Expression::R(Box::new(Relationship {
-                    lhs: Expression::A(Box::new(Atom::Name("f".into()))),
-                    rhs: Expression::A(Box::new(Atom::Name("F".into()))),
+                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("E".into())))),
+                    relation: Decorated::none(Relation::Implies),
                     negated: false,
-                    relation: Decorated::none(Relation::ElementOf),
-                })),
-                negated: false,
-                relation: Decorated::none(Relation::Implies),
+                    rhs: Expression::R(Box::new(Relationship {
+                        lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("f".into())))),
+                        relation: Decorated::none(Relation::ElementOf),
+                        negated: false,
+                        rhs: Expression::DA(Box::new(Decorated::none(Atom::Name("F".into()))))
+                    }))
+                }))
             }
         ))
     )
@@ -1602,11 +1612,16 @@ fn operation(state: InputState, input: &str) -> IResult<&str, Operation> {
             code: ErrorKind::IsNot,
         }));
     }
-    let expression_no_operation = move |i| expression(InputState {
-        disable_operation: true,
-        disable_relationship: state.disable_relationship,
-        call_depth: state.call_depth,
-    }, i);
+    let expression_no_operation = move |i| {
+        expression(
+            InputState {
+                disable_operation: true,
+                disable_relationship: state.disable_relationship,
+                call_depth: state.call_depth,
+            },
+            i,
+        )
+    };
     let expression_operation = move |i| expression(state, i);
     eprintln!("trying operation on {:?}", input);
     if let Ok((tail, (lhs, operator, decorations, rhs))) = tuple((
@@ -1950,4 +1965,89 @@ fn try_prefixes<'a>(input: &'a str, prefixes: Vec<&'a str>) -> Option<&'a str> {
     None
 }
 
-fn main() {}
+fn main() {
+    let state = InputState {
+        disable_operation: false,
+        disable_relationship: false,
+        call_depth: 0,
+    };
+    if relationship(state, "x_n -> a => f(x_n) --(n -> oo)-> f(a)")
+        != Ok((
+            "",
+            Relationship {
+                lhs: Expression::DA(Box::new(Decorated {
+                    decoratee: Atom::Name("x".into()),
+                    decorations: Decorations {
+                        under: None,
+                        over: None,
+                        sup: None,
+                        sub: Some(Atom::Name("n".into())),
+                    },
+                })),
+                negated: false,
+                relation: Decorated::none(Relation::Tends),
+                rhs: Expression::R(Box::new(Relationship {
+                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("a".into())))),
+                    negated: false,
+                    relation: Decorated::none(Relation::Implies),
+                    rhs: Expression::R(Box::new(Relationship {
+                        lhs: Expression::F(Box::new(FunctionCall {
+                            caller: Decorated::none(Atom::Name("f".into())),
+                            arguments: Expression::DA(Box::new(Decorated::sub(
+                                Atom::Name("x".into()),
+                                Atom::Name("n".into()),
+                            ))),
+                        })),
+                        relation: Decorated::sub(
+                            Relation::Tends,
+                            Atom::Group(Group::Parenthesized(Expression::R(Box::new(
+                                Relationship {
+                                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name(
+                                        "n".into(),
+                                    )))),
+                                    relation: Decorated::none(Relation::Tends),
+                                    negated: false,
+                                    rhs: Expression::DA(Box::new(Decorated::none(Atom::Symbol(
+                                        Symbol::Infinity,
+                                    )))),
+                                },
+                            )))),
+                        ),
+                        negated: false,
+                        rhs: Expression::F(Box::new(FunctionCall {
+                            caller: Decorated::none(Atom::Name("f".into())),
+                            arguments: Expression::DA(Box::new(Decorated::none(Atom::Name(
+                                "a".into(),
+                            )))),
+                        })),
+                    })),
+                })),
+            },
+        ))
+    {
+        eprintln!("error on test 1");
+    }
+    if relationship(state, "e !in E => f in F")
+        != Ok((
+            "",
+            Relationship {
+                lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("e".into())))),
+                relation: Decorated::none(Relation::ElementOf),
+                negated: true,
+                rhs: Expression::R(Box::new(Relationship {
+                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("E".into())))),
+                    relation: Decorated::none(Relation::Implies),
+                    negated: false,
+                    rhs: Expression::R(Box::new(Relationship {
+                        lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("f".into())))),
+                        relation: Decorated::none(Relation::ElementOf),
+                        negated: false,
+                        rhs: Expression::DA(Box::new(Decorated::none(Atom::Name("F".into())))),
+                    })),
+                })),
+            },
+        ))
+    {
+        eprintln!("error on test 2");
+    }
+}
