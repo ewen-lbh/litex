@@ -1076,7 +1076,7 @@ fn test_relationship() {
                 negated: false,
                 relation: Decorated::none(Relation::Tends),
                 rhs: Expression::R(Box::new(Relationship {
-                    lhs: Expression::A(Box::new(Atom::Name("a".into()))),
+                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("a".into())))),
                     negated: false,
                     relation: Decorated::none(Relation::Implies),
                     rhs: Expression::R(Box::new(Relationship {
@@ -1091,17 +1091,17 @@ fn test_relationship() {
                             Relation::Tends,
                             Atom::Group(Group::Parenthesized(Expression::R(Box::new(
                                 Relationship {
-                                    lhs: Expression::A(Box::new(Atom::Name("n".into()))),
+                                    lhs: Expression::DA(Box::new(Decorated::none(Atom::Name("n".into())))),
                                     relation: Decorated::none(Relation::Tends),
                                     negated: false,
-                                    rhs: Expression::A(Box::new(Atom::Symbol(Symbol::Infinity))),
+                                    rhs: Expression::DA(Box::new(Decorated::none(Atom::Symbol(Symbol::Infinity)))),
                                 }
                             ))))
                         ),
                         negated: false,
                         rhs: Expression::F(Box::new(FunctionCall {
                             caller: Decorated::none(Atom::Name("f".into())),
-                            arguments: Expression::A(Box::new(Atom::Name("a".into())))
+                            arguments: Expression::DA(Box::new(Decorated::none(Atom::Name("a".into()))))
                         }))
                     })),
                 }))
