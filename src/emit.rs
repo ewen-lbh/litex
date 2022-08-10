@@ -84,10 +84,10 @@ impl<T: EmitLatexHasParens> EmitLatexHasParens for Decorated<T> {
     fn emit(&self, parens: ParensHandling) -> String {
         let mut latex = self.decoratee.emit(parens);
         if let Some(sub_expr) = &self.decorations.sub {
-            latex.extend(format!("_{}", sub_expr.emit_unwrap_parens()).chars());
+            latex.extend(format!("_{{{}}}", sub_expr.emit_unwrap_parens()).chars());
         }
         if let Some(sup_expr) = &self.decorations.sup {
-            latex.extend(format!("^{}", sup_expr.emit_unwrap_parens()).chars());
+            latex.extend(format!("^{{{}}}", sup_expr.emit_unwrap_parens()).chars());
         }
         if let Some(under_expr) = &self.decorations.under {
             latex = format!(
@@ -111,10 +111,10 @@ impl<T: EmitLatex> EmitLatex for Decorated<T> {
     fn emit(&self) -> String {
         let mut latex = self.decoratee.emit();
         if let Some(sub_expr) = &self.decorations.sub {
-            latex.extend(format!("_{}", sub_expr.emit_unwrap_parens()).chars());
+            latex.extend(format!("_{{{}}}", sub_expr.emit_unwrap_parens()).chars());
         }
         if let Some(sup_expr) = &self.decorations.sup {
-            latex.extend(format!("^{}", sup_expr.emit_unwrap_parens()).chars());
+            latex.extend(format!("^{{{}}}", sup_expr.emit_unwrap_parens()).chars());
         }
         if let Some(under_expr) = &self.decorations.under {
             latex = format!(
@@ -166,56 +166,65 @@ enum Parens {
 impl EmitLatexHasParens for Atom {
     fn emit(&self, parens: ParensHandling) -> String {
         match self {
-            Atom::Group(Group::Parenthesized(expr)) => {
-                format!(
-                    match parens {
-                        Keep => "\\left({}\\right)",
-                        _ => "{}",
-                    },
-                    expr.emit_keep_parens()
-                )
-            }
-            _ => todo!(),
+            Atom::Group(group) => group.emit(parens),
+            Atom::Name(name) => name.to_string(),
+            Atom::Number(number) => format!("{}", number),
+            Atom::Quantity(qty) => format!("\\SI{{{}}}{{{}}}", qty.value, qty.unit.emit()),
+            Atom::BareOperator(op) => op.emit(),
+            Atom::Symbol(symb) => symb.emit(),
+            Atom::Text(txt) => txt.emit(),
         }
         .into()
     }
 }
 
-impl EmitLatex for Group {
-    fn emit(&self) -> String {
-        "\\left".to_string()
-            + &match self {
-                Group::AbsoluteValue(s) => format!("|{}|", s.emit_keep_parens()),
-                Group::AngleBracketed(s) => format!(r#"langle{}\rangle"#, s.emit_keep_parens()),
-                Group::Braced(s) => format!(r#"\{{{}\}}"#, s.emit_keep_parens()),
-                Group::Bracketed(s) => format!("[{}]", s.emit_keep_parens()),
-                Group::LeftOpenIntegerRange(s) => {
-                    format!("\\rrbracket{}\\rrbracket", s.emit_keep_parens())
-                }
-                Group::LeftOpenRange(s) => format!("]{}]", s.emit_keep_parens()),
-                Group::Norm(s) => format!("\\|{}\\|", s.emit_keep_parens()),
-                Group::OpenIntegerRange(s) => {
-                    format!("\\rrbracket{}\\llbracket", s.emit_keep_parens())
-                }
-                Group::OpenRange(s) => format!("]{}[", s.emit_keep_parens()),
-                Group::Parenthesized(s) => format!("({})", s.emit_keep_parens()),
-                Group::RightOpenIntegerRange(s) => {
-                    format!("\\llbracket{}\\llbracket", s.emit_keep_parens())
-                }
-                Group::RightOpenRange(s) => format!("[{}[", s.emit_keep_parens()),
-                Group::WhiteBracketed(s) => {
-                    format!("\\llbracket{}\\rrbracket", s.emit_keep_parens())
-                }
+impl EmitLatexHasParens for Group {
+    fn emit(&self, parens: ParensHandling) -> String {
+        match &self {
+            Group::Parenthesized(expr) => match parens {
+                Keep => format!("\\left({}\\right)", expr.emit_keep_parens()),
+                _ => format!("{}", expr.emit_keep_parens()),
+            },
+            Group::Braced(expr) => format!("\\left\\{{{}\\right\\}}", expr.emit_keep_parens()),
+            Group::Bracketed(expr) => format!("\\left[{}\\right]", expr.emit_keep_parens()),
+            Group::OpenRange(expr) => format!("\\left]{}\\right[", expr.emit_keep_parens()),
+            Group::LeftOpenRange(expr) => format!("\\left]{}\\right]", expr.emit_keep_parens()),
+            Group::RightOpenRange(expr) => {
+                format!("\\left[{}\\right[", expr.emit_keep_parens())
             }
-            + "\\right"
+            Group::WhiteBracketed(expr) => format!(
+                "\\left\\llbracket{}\\right\\rrbracket",
+                expr.emit_keep_parens()
+            ),
+            Group::OpenIntegerRange(expr) => format!(
+                "\\left\\rrbracket{}\\right\\llbracket",
+                expr.emit_keep_parens()
+            ),
+            Group::LeftOpenIntegerRange(expr) => format!(
+                "\\left\\rrbracket{}\\right\\rrbracket",
+                expr.emit_keep_parens()
+            ),
+            Group::RightOpenIntegerRange(expr) => {
+                format!(
+                    "\\left\\llbracket{}\\right\\llbracket",
+                    expr.emit_keep_parens()
+                )
+            }
+            Group::AbsoluteValue(expr) => format!("\\left|{}\\right|", expr.emit_keep_parens()),
+            Group::Norm(expr) => format!("\\left\\|{}\\right\\|", expr.emit_keep_parens()),
+            Group::AngleBracketed(expr) => {
+                format!("\\left\\langle{}\\right\\rangle", expr.emit_keep_parens())
+            }
+        }
     }
 }
 
 #[test]
 fn test_emit_group() {
     assert_eq!(
-        Group::AngleBracketed(Expression::A(Box::new(Atom::Symbol(Symbol::Infinity)))).emit(),
-        r#"\left\langle\infty\rangle\right"#.to_string()
+        Group::AngleBracketed(Expression::A(Box::new(Atom::Symbol(Symbol::Infinity))))
+            .emit(ParensHandling::Keep),
+        r#"\left\langle\infty\right\rangle"#.to_string()
     );
 }
 
@@ -421,6 +430,7 @@ impl EmitLatex for BinaryOperator {
             Self::SymmetricDifference => "\\Delta",
             Self::Union => "\\cup",
             Self::VectorProduct => "\\land",
+            Self::Comma => ",\\ ",
         }
         .to_string()
     }
@@ -474,5 +484,40 @@ impl EmitLatex for BigOperator {
                 Self::TripleIntegral => "iiint",
                 Self::Union => "bigcup",
             }
+    }
+}
+
+impl EmitLatex for Text {
+    fn emit(&self) -> String {
+        (match self.font {
+            TextFont::Caligraphic => "\\mathcal",
+            TextFont::Fraktur => "\\mathfrak",
+            TextFont::BlackboardBold => "\\mathbb",
+            TextFont::Bold => "\\mathbf",
+            TextFont::Sans => "\\mathrm",
+            TextFont::Monospace => "\\mathtt",
+            TextFont::Normal => "",
+            TextFont::Italic => "\\mathit",
+            TextFont::Script => "\\mathsc",
+            TextFont::MathOperator => "\\operatorname",
+        })
+        .to_owned()
+            + "{"
+            + &self.content
+            + "}"
+    }
+}
+
+impl EmitLatex for Symbol {
+    fn emit(&self) -> String {
+        match self {
+            Symbol::Infinity => "\\infty",
+            Symbol::Aleph => "\\aleph",
+            Symbol::Beth => "\\beth",
+            Symbol::Gimmel => "\\gimmel",
+            Symbol::ProofEnd => "\\qed", // TODO user-configurable
+            Symbol::Contradiction => "\\lightning", // TODO user-configurable
+        }
+        .into()
     }
 }
