@@ -14,7 +14,11 @@ use unicode_segmentation::UnicodeSegmentation;
 pub struct InputState {
     disable_operation: bool,
     disable_relationship: bool,
-    call_depth: i32,
+    call_depth: usize,
+}
+
+fn debug_try(funcname: &'static str, input: &str) {
+    eprintln!("{} <- {}", funcname, input);
 }
 
 impl InputState {
@@ -28,10 +32,7 @@ impl InputState {
 }
 
 pub fn expression(state: InputState, input: &str) -> IResult<&str, Expression> {
-    eprintln!(
-        "trying expression on {:?}, call depth is {:?}",
-        input, state.call_depth
-    );
+    debug_try("expression", input);
     let state = InputState {
         disable_operation: state.disable_operation,
         disable_relationship: state.disable_relationship,
@@ -71,7 +72,7 @@ pub fn expression(state: InputState, input: &str) -> IResult<&str, Expression> {
 }
 
 pub fn quantification(state: InputState, input: &str) -> IResult<&str, Quantification> {
-    eprintln!("trying quantification on {:?}", input);
+    debug_try("quantification", input);
     let expression = |i| expression(state, i);
     let (tail, (quantifier, decos, _, expr)) =
         tuple((quantifier, decorations, whitespace, expression))(input)?;
@@ -84,8 +85,74 @@ pub fn quantification(state: InputState, input: &str) -> IResult<&str, Quantific
     ))
 }
 
+#[test]
+fn test_quantification() {
+    assert_eq!(
+        quantification(
+            InputState::new(),
+            r#"AA n in NN, c"D"^n = lim_(i=0)^n c"D""#
+        ),
+        Ok((
+            "",
+            Quantification {
+                quantifier: Decorated::none(Quantifier::Universal),
+                expression: Expression::R(Box::new(Relationship {
+                    lhs: Expression::DA(Box::new(Decorated::none(
+                        Atom::Name("n".to_string()).into()
+                    ))),
+                    relation: Decorated::none(Relation::ElementOf),
+                    negated: false,
+                    rhs: Expression::O(Box::new(Operation {
+                        lhs: Some(Expression::DA(Box::new(Decorated::none(Atom::Name(
+                            "NN".into()
+                        ))))),
+                        operator: Decorated::none(Operator::Binary(BinaryOperator::Comma)),
+                        rhs: Some(Expression::R(Box::new(Relationship {
+                            lhs: Expression::DA(Box::new(Decorated::none(Atom::Text(Text {
+                                font: TextFont::Caligraphic,
+                                content: "D".into(),
+                            })))),
+                            relation: Decorated::none(Relation::Equals),
+                            negated: false,
+                            rhs: Expression::O(Box::new(Operation {
+                                lhs: None,
+                                operator: Decorated {
+                                    decoratee: Operator::Big(BigOperator::Limit),
+                                    decorations: Decorations {
+                                        sub: Some(Atom::Group(Group::Parenthesized(
+                                            Expression::R(Box::new(Relationship {
+                                                lhs: Expression::DA(Box::new(Decorated::none(
+                                                    Atom::Name("i".to_string())
+                                                ))),
+                                                relation: Decorated::none(Relation::Equals),
+                                                negated: false,
+                                                rhs: Expression::DA(Box::new(Decorated::none(
+                                                    Atom::Number(Number::Integer(0))
+                                                )))
+                                            }))
+                                        ))),
+                                        sup: Some(Atom::Name("n".to_string())),
+                                        under: None,
+                                        over: None
+                                    }
+                                },
+                                rhs: Some(Expression::DA(Box::new(Decorated::none(Atom::Text(
+                                    Text {
+                                        font: TextFont::Caligraphic,
+                                        content: "D".into(),
+                                    }
+                                )))))
+                            }))
+                        })))
+                    }))
+                }))
+            }
+        ))
+    )
+}
+
 pub fn quantifier(input: &str) -> IResult<&str, Quantifier> {
-    eprintln!("trying quantifier on {:?}", input);
+    debug_try("quantifier", input);
     if let Ok((tail, _)) = alt::<_, _, Error<_>, _>((tag("∀"), tag("AA"), tag("forall")))(input) {
         Ok((tail, Quantifier::Universal))
     } else if let Ok((tail, _)) =
@@ -105,7 +172,7 @@ pub fn quantifier(input: &str) -> IResult<&str, Quantifier> {
 }
 
 pub fn folded_relationship(input: &str) -> IResult<&str, FoldedRelationship> {
-    eprintln!("trying folded_relationship on {:?}", input);
+    debug_try("folded_relationship", input);
     let state = InputState {
         disable_operation: false,
         disable_relationship: true,
@@ -139,7 +206,7 @@ pub fn relationship(state: InputState, input: &str) -> IResult<&str, Relationshi
             code: ErrorKind::IsNot,
         }));
     }
-    eprintln!("trying relationship on {:?}", input);
+    debug_try("relationship", input);
     let expression_no_relationship = |i| {
         expression(
             InputState {
@@ -298,7 +365,7 @@ pub fn test_relationship() {
 }
 
 pub fn number(input: &str) -> IResult<&str, Number> {
-    eprintln!("trying number on {:?}", input);
+    debug_try("number", input);
     if let Ok((tail, float)) = _float_only_when_comma(input) {
         Ok((tail, float))
     } else if let Ok((tail, (neg, number))) = tuple((opt(char('-')), digit1::<_, Error<_>>))(input)
@@ -323,7 +390,7 @@ pub fn number(input: &str) -> IResult<&str, Number> {
 
 pub fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
     if !input.contains('.') {
-        eprintln!("trying _float_only_when_comma on {:?}", input);
+        debug_try("_float_only_when_comma", input);
         return Err(Err::Error(Error {
             code: ErrorKind::Char,
             input: "",
@@ -343,7 +410,7 @@ pub fn _float_only_when_comma(input: &str) -> IResult<&str, Number> {
 }
 
 pub fn atom(state: InputState, input: &str) -> IResult<&str, Atom, Error<&str>> {
-    eprintln!("trying atom on {:?}", input);
+    debug_try("atom", input);
     if let Ok((tail, txt)) = text(input) {
         Ok((tail, Atom::Text(txt)))
     } else if let Ok((tail, number)) = number(input) {
@@ -367,10 +434,9 @@ pub fn atom(state: InputState, input: &str) -> IResult<&str, Atom, Error<&str>> 
 }
 
 pub fn name(input: &str) -> IResult<&str, String> {
-    eprintln!("trying name on {:?}", input);
+    debug_try("name", input);
     let mut matched = String::from("");
     for grapheme in input.graphemes(true) {
-        eprintln!("               current grapheme is {:?}", grapheme);
         if grapheme.chars().any(|c| c.is_alphabetic()) {
             matched += grapheme;
         } else {
@@ -436,7 +502,7 @@ pub fn test_atom() {
 }
 
 pub fn text(input: &str) -> IResult<&str, Text> {
-    eprintln!("trying text on {:?}", input);
+    debug_try("text", input);
     let (tail, (maybe_font, content)) = tuple((opt(text_font), quoted_string))(input)?;
     Ok((
         tail,
@@ -482,12 +548,12 @@ pub fn test_text() {
 }
 
 pub fn quoted_string(input: &str) -> IResult<&str, String> {
-    eprintln!("trying quoted_string on {:?}", input);
+    debug_try("quoted_string", input);
     delimited(tag("\""), _in_quotes, tag("\""))(input)
 }
 
 pub fn _in_quotes(input: &str) -> IResult<&str, String> {
-    eprintln!("trying _in_quotes on {:?}", input);
+    debug_try("_in_quotes", input);
     let mut content = String::new();
     let mut skip_delimiter = false;
     for (i, ch) in input.char_indices() {
@@ -504,7 +570,7 @@ pub fn _in_quotes(input: &str) -> IResult<&str, String> {
 }
 
 pub fn text_font(input: &str) -> IResult<&str, TextFont> {
-    eprintln!("trying text_font on {:?}", input);
+    debug_try("text_font", input);
     match_enum_variants_to_literals(
         input,
         vec![
@@ -523,7 +589,7 @@ pub fn text_font(input: &str) -> IResult<&str, TextFont> {
 }
 
 pub fn group(state: InputState, input: &str) -> IResult<&str, Group> {
-    eprintln!("trying group on {:?}", input);
+    debug_try("group", input);
     let expression = move |i| expression(state, i);
     if let Ok((tail, expr)) = surrounded(expression, "{", "}", true)(input) {
         Ok((tail, Group::Braced(expr)))
@@ -588,7 +654,7 @@ where
 }
 
 pub fn whitespace(input: &str) -> IResult<&str, &str> {
-    eprintln!("trying whitespace on {:?}", input);
+    debug_try("whitespace", input);
     let mut tail_starts_at = 0;
     for grapheme in input.graphemes(true) {
         if grapheme != " " {
@@ -608,7 +674,7 @@ pub fn whitespace(input: &str) -> IResult<&str, &str> {
 }
 
 pub fn quantity(input: &str) -> IResult<&str, Quantity> {
-    eprintln!("trying quantity on {:?}", input);
+    debug_try("quantity", input);
     let (tail, (value, _, u)) = tuple((number, whitespace, unit))(input)?;
     Ok((
         tail,
@@ -643,7 +709,7 @@ pub fn test_quantity() {
 }
 
 pub fn unit(input: &str) -> IResult<&str, Unit> {
-    eprintln!("trying unit on {:?}", input);
+    debug_try("unit", input);
     if let Ok((tail, (a, _, b))) = tuple((_unit_no_bin_op, char('*'), unit))(input) {
         Ok((tail, Unit::Product(Box::new(a), Box::new(b))))
     } else if let Ok((tail, (a, _, b))) = tuple((_unit_no_bin_op, char('/'), unit))(input) {
@@ -654,7 +720,7 @@ pub fn unit(input: &str) -> IResult<&str, Unit> {
 }
 
 pub fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
-    eprintln!("trying _unit_no_bin_op on {:?}", input);
+    debug_try("_unit_no_bin_op", input);
     if let Ok((tail, (u, _, pow))) = tuple((_unit_no_op, char('^'), |i| {
         atom(
             InputState {
@@ -673,7 +739,7 @@ pub fn _unit_no_bin_op(input: &str) -> IResult<&str, Unit> {
 }
 
 pub fn _unit_no_op(input: &str) -> IResult<&str, Unit> {
-    eprintln!("trying _unit_no_op on {:?}", input);
+    debug_try("_unit_no_op", input);
     if let Ok((tail, (prefix, fundamental))) = tuple((unit_prefix, fundamental_unit))(input) {
         Ok((tail, Unit::Prefixed(prefix, fundamental)))
     } else if let Ok((tail, u)) = fundamental_unit(input) {
@@ -707,7 +773,7 @@ pub fn test_unit() {
 }
 
 pub fn unit_prefix(input: &str) -> IResult<&str, UnitPrefix> {
-    eprintln!("trying unit_prefix on {:?}", input);
+    debug_try("unit_prefix", input);
     match_enum_variants_to_literals(
         input,
         vec![
@@ -728,7 +794,7 @@ pub fn unit_prefix(input: &str) -> IResult<&str, UnitPrefix> {
 }
 
 pub fn fundamental_unit(input: &str) -> IResult<&str, FundamentalUnit> {
-    eprintln!("trying fundamental_unit on {:?}", input);
+    debug_try("fundamental_unit", input);
     match_enum_variants_to_literals(
         input,
         vec![
@@ -779,19 +845,23 @@ pub fn operation(state: InputState, input: &str) -> IResult<&str, Operation> {
         )
     };
     let expression_operation = move |i| expression(state, i);
-    eprintln!("trying operation on {:?}", input);
-    if let Ok((tail, (lhs, operator, decorations, rhs))) = tuple((
-        terminated(expression_no_operation, whitespace),
-        binary_operator,
-        decorations,
-        preceded(whitespace, expression_operation),
+    debug_try("operation", input);
+    if let Ok((tail, (lhs, _, operator, _, rhs))) = tuple((
+        expression_no_operation,
+        opt(whitespace),
+        decorated(binary_operator),
+        opt(whitespace),
+        expression_operation,
     ))(input)
     {
         Ok((
             tail,
             Operation {
                 lhs: Some(lhs),
-                operator: Decorated::new(Operator::Binary(operator), decorations),
+                operator: Decorated {
+                    decoratee: Operator::Binary(operator.decoratee),
+                    decorations: operator.decorations,
+                },
                 rhs: Some(rhs),
             },
         ))
@@ -846,7 +916,7 @@ pub fn operation(state: InputState, input: &str) -> IResult<&str, Operation> {
 }
 
 pub fn decorations(input: &str) -> IResult<&str, Decorations> {
-    eprintln!("trying decorations on {:?}", input);
+    debug_try("decorations", input);
     let atom = |i| {
         atom(
             InputState {
@@ -908,7 +978,7 @@ pub fn test_decorations() {
 }
 
 pub fn relation(input: &str) -> IResult<&str, Relation> {
-    eprintln!("trying relation on {:?}", input);
+    debug_try("relation", input);
     match_enum_variants_to_literals(
         input,
         vec![
@@ -938,7 +1008,7 @@ pub fn relation(input: &str) -> IResult<&str, Relation> {
 }
 
 pub fn operator(input: &str) -> IResult<&str, Operator> {
-    eprintln!("trying operator on {:?}", input);
+    debug_try("operator", input);
     if let Ok((tail, op)) = binary_operator(input) {
         Ok((tail, Operator::Binary(op)))
     } else if let Ok((tail, op)) = prefix_operator(input) {
@@ -956,8 +1026,27 @@ pub fn operator(input: &str) -> IResult<&str, Operator> {
 }
 
 pub fn binary_operator(input: &str) -> IResult<&str, BinaryOperator> {
-    eprintln!("trying binary_operator on {:?}", input);
-    match_enum_variants_to_literals(input, vec![(BinaryOperator::Addition, vec!["+"])])
+    debug_try("binary_operator", input);
+    match_enum_variants_to_literals(
+        input,
+        vec![
+            (BinaryOperator::Addition, vec!["+"]),
+            (BinaryOperator::Comma, vec![", "]),
+            (BinaryOperator::Difference, vec!["-"]),
+            (BinaryOperator::Division, vec!["-:-", "÷"]),
+            (BinaryOperator::Fraction, vec!["/"]),
+            (BinaryOperator::Remainder, vec!["mod"]),
+            (BinaryOperator::DirectAddition, vec!["(+)"]),
+            (BinaryOperator::CartesianProduct, vec!["*", "xx"]),
+            (BinaryOperator::DotProduct, vec!["*"]),
+            (BinaryOperator::VectorProduct, vec!["^", "/\\"]),
+            (BinaryOperator::Composition, vec!["°"]),
+            (BinaryOperator::Union, vec!["union", "uu"]),
+            (BinaryOperator::Intersection, vec!["inter", "nn"]),
+            (BinaryOperator::SetDifference, vec!["\\"]),
+            (BinaryOperator::SymmetricDifference, vec!["Δ", "symdiff"]),
+        ],
+    )
 }
 
 #[test]
@@ -973,7 +1062,7 @@ pub fn test_binary_operator() {
 }
 
 pub fn prefix_operator(input: &str) -> IResult<&str, PrefixOperator> {
-    eprintln!("trying prefix_operator on {:?}", input);
+    debug_try("prefix_operator", input);
     match_enum_variants_to_literals(
         input,
         vec![
@@ -1006,7 +1095,7 @@ pub fn test_prefix_operator() {
 }
 
 pub fn postfix_operator(input: &str) -> IResult<&str, PostfixOperator> {
-    eprintln!("trying postfix_operator on {:?}", input);
+    debug_try("postfix_operator", input);
     match_enum_variants_to_literals(
         input,
         vec![
@@ -1033,7 +1122,7 @@ pub fn test_postfix_operator() {
 }
 
 pub fn big_operator(input: &str) -> IResult<&str, BigOperator> {
-    eprintln!("trying big_operator on {:?}", input);
+    debug_try("big_operator", input);
     match_enum_variants_to_literals(
         input,
         vec![

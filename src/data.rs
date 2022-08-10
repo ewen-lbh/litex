@@ -257,6 +257,7 @@ pub enum Operator {
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOperator {
     Addition,
+    Comma,
     Difference,
     Division,
     Fraction,
