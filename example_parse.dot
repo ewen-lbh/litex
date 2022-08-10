@@ -1,0 +1,135 @@
+digraph {
+    <Quantification
+    AA n in NN, c"D"^n = lim_(i=0)^n c"D">
+    ->
+        <Quantifier::Universal
+    AA>[headlabel=quantifier]
+
+    <Quantification
+    AA n in NN, c"D"^n = lim_(i=0)^n c"D"> ->
+        <Relationship
+        n in NN, c"D"^n = lim_(i=0)^n c"D">[headlabel=expression]
+
+    <Relationship
+        n in NN, c"D"^n = lim_(i=0)^n c"D"> -> 
+        <Atom::Name
+        n>[headlabel=LHS]
+    
+    <Relationship
+        n in NN, c"D"^n = lim_(i=0)^n c"D"> -> 
+        <Operator::BinaryOperator
+        in>[headlabel=operator] 
+        <Operator::BinaryOperator
+        in> -> <BinaryOperator::ElementOf
+        in>
+    
+    <Relationship
+        n in NN, c"D"^n = lim_(i=0)^n c"D"> -> 
+        <Operation
+        NN, c"D"^n = lim_(i=0)^n c"D">[headlabel=RHS]
+    
+    <Operation
+        NN, c"D"^n = lim_(i=0)^n c"D"> ->
+        <Atom::Name
+        NN>[headlabel=LHS]
+    
+    <Operation
+        NN, c"D"^n = lim_(i=0)^n c"D"> ->
+        <Operator::BinaryOperator
+        , >[headlabel=operator]
+        <Operator::BinaryOperator
+        , > -> <BinaryOperator::Comma
+        , >
+    
+    <Operation
+        NN, c"D"^n = lim_(i=0)^n c"D"> ->
+        <Relationship
+        c"D"^n = lim_(i=0)^n c"D">[headlabel=RHS]
+    
+    <Relationship
+        c"D"^n = lim_(i=0)^n c"D"> ->
+        <DecoratedAtom
+        c"D"^n>[headlabel=LHS]
+    
+    <DecoratedAtom
+        c"D"^n> ->
+        <Text
+        c"D">[headlabel=decoratee]
+    
+        <Text
+        c"D"> -> <String
+        D>[headlabel=content]
+
+        <Text
+        c"D"> -> <TextFont::Calligraphic>[headlabel=font]
+
+    <DecoratedAtom
+        c"D"^n> ->
+        <Atom::Name
+        n >[headlabel=subscript]
+    
+    <Relationship
+        c"D"^n = lim_(i=0)^n c"D"> ->
+        <Operator::BinaryOperator
+        =>[headlabel=operator]
+
+        <Operator::BinaryOperator
+        => -> <BinaryOperator::Equals
+        =>
+
+    <Relationship
+        c"D"^n = lim_(i=0)^n c"D"> ->
+        <Operation
+        lim_(i=0)^n c"D">[headlabel=RHS]
+    
+    <Operation
+        lim_(i=0)^n c"D"> ->
+        <Operator::BigOperator
+        lim_(i=0)^n>[headlabel=operator]
+
+        <Operator::BigOperator
+        lim_(i=0)^n> ->
+        <BigOperator::Limit
+        lim>[headlabel=decoratee]
+
+        <Operator::BigOperator
+        lim_(i=0)^n> ->
+        <Relationship
+        i=0>[headlabel=subscript]
+    
+        <Relationship
+        i=0> ->
+        <Atom::Name
+        i>[headlabel=LHS]
+    
+        <Relationship
+        i=0> ->
+        <Operator::BinaryOperator
+        = > ->
+        <BinaryOperator::Equals
+        = >
+
+        <Relationship
+        i=0> ->
+        <Atom::Number
+        0>[headlabel=RHS]
+
+        <Operator::BigOperator
+        lim_(i=0)^n> -> 
+        <Atom::Name
+        n  >[headlabel=superscript]
+    
+    <Operation
+        lim_(i=0)^n c"D"> ->
+        <Text
+        c"D" >[headlabel=LHS]
+    
+        <Text
+        c"D" > ->
+        <TextFont::Calligraphic >[headlabel=font]
+    
+        <Text
+        c"D" > ->
+        <String
+        D >[headlabel=content]
+}
